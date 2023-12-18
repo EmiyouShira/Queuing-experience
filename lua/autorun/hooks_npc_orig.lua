@@ -69,7 +69,7 @@ local function newDesk(pos)
   -- Move NPC to desired position
   function self:Move(npc, pos)
     if(not IsValid(npc)) then return end
-    npc:SetSaveValue("m_vecLastPosition", pos)
+    npc:SetLastPosition(pos)
     npc:SetSchedule(mtDesk.__move)
   end
   -- Check when full
