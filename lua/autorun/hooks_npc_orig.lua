@@ -141,24 +141,27 @@ local function newDesk(pos)
   end
   -- Rearange NPC in the queue
   function self:Arrange()
-    local idx = 0
+    local idx, siz = 0, 0
     for crr = 1, miSiz do
       if(IsValid(mtData[crr].Ent)) then
-      else
+        siz = siz + 1 -- Regster populated node
+      else -- Fill it from the next set
+        idx = 0 -- Assume valid NPC is not found
         for src = (crr + 1), miSiz do
           if(IsValid(mtData[src].Ent)) then
-            idx = src -- Save index of first valid
-          else
-            idx = 0 -- Could not find NPC
+            idx = src; break
+          else -- Save index of first valid
             mtData[src].Ent = nil
           end
-          if(idx ~= 0 and not IsValid(mtData[crr].Ent)) then
-            mtData[crr].Ent = mtData[idx].Ent
-            mtData[idx].Ent = nil
-          end
         end -- When npc is found assign it to the empty slot
+        if(idx ~= 0 and not IsValid(mtData[crr].Ent)) then
+          mtData[crr].Ent = mtData[idx].Ent
+          mtData[idx].Ent = nil; siz = siz + 1
+        end
       end
-    end; return self
+    end -- Assign the new NPC count
+    if(siz > 0) then mtData.Size = siz end
+    return self
   end
   function self:Stay()
     for idx = 1, miSiz do
