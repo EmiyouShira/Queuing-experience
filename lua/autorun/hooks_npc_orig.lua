@@ -10,9 +10,9 @@ local mtDesk = {}
       mtDesk.__npx = nil
       -- NPC Move type
       mtDesk.__move = SCHED_FORCED_GO_RUN
-      -- NPC Arrival Interval
+      -- NPC Exit Interval
       mtDesk.__pull = 10 -- in seconds
-      -- Timer Interval
+      -- NPC Arrival Interval
       mtDesk.__push = 2 -- in seconds
       -- Check when shedule is finished
       mtDesk.__shed = 0.1 -- in seconds
@@ -92,29 +92,27 @@ local function newDesk(pos, dir, dst, siz)
     if(not IsValid(npc)) then return nil end
     mtData.Size = mtData.Size - 1
     mtData[1].Ent = nil
-    print("PULL", npc)
     return npc
   end
   -- Rearange NPC in the queue
   function self:Arrange()
-    local ius, ifr = 0, 1
-    for iqu = 1, miSiz do
-      if(IsValid(mtData[iqu].Ent)) then
+    local idx = 0
+    for crr = 1, miSiz do
+      if(IsValid(mtData[crr].Ent)) then
       else
-        for isr = (iqu + 1), miSiz do
-          if(IsValid(mtData[isr].Ent)) then
-            ius = isr -- Save index of first valid
-            print("FOUND", isr, mtData[isr].Ent)
-            break;
+        for src = (crr + 1), miSiz do
+          if(IsValid(mtData[src].Ent)) then
+            idx = src -- Save index of first valid
           else
-            ius = 0 -- Could not find NPC
-            mtData[isr].Ent = nil
+            idx = 0 -- Could not find NPC
+            mtData[src].Ent = nil
+          end
+          if(idx ~= 0 and not IsValid(mtData[crr].Ent)) then
+            print(mtData[crr].Ent, crr, idx)
+            mtData[crr].Ent = mtData[idx].Ent
+            mtData[idx].Ent = nil
           end
         end -- When npc is found assign it to the empty slot
-        if(ius ~= 0 and not IsValid(mtData[iqu].Ent)) then
-          print("MOVE", ius, iqu, mtData[ius].Ent)
-          mtData[iqu].Ent = mtData[ius].Ent
-        end
       end
     end; return self
   end
@@ -133,13 +131,11 @@ local function newDesk(pos, dir, dst, siz)
   function self:Draw()
     cam.Start2D()
       local str, idx = mtData[1].Pos, self:IsIndex(1)
-     -- print("S", 1, mtData[1].Ent)
       local xy = str:ToScreen()
       local cr, cg = (idx and 0 or 255), (idx and 255 or 0)
       surface.SetDrawColor(cr, cg, 0)
       surface.DrawCircle(xy.x, xy.y, self:GerRadius(str, 10), cr, cg, 0)
       for cnt = 2, miSiz do
-       -- print("G", cnt, mtData[cnt].Ent)
         local poc = mtData[cnt].Pos
         local pop = mtData[cnt-1].Pos
         local xyc = poc:ToScreen()
@@ -195,10 +191,9 @@ else
   timer.Remove("hook_npc_queue_pull")
   timer.Create("hook_npc_queue_pull", mtDesk.__pull, 0,
     function()
+      if(IsValid(mtDesk.__npx)) then return end
       mtDesk.__npx = oDesk:Pull()
-      print("PUNW", mtDesk.__npx)
       if(IsValid(mtDesk.__npx)) then
-        print("PUMV", mtDesk.__npx, mtDesk.__out)
         oDesk:Move(mtDesk.__npx, mtDesk.__out)
         mtDesk.__npc[tostring(mtDesk.__npx:EntIndex())] = nil
       end
@@ -210,6 +205,8 @@ else
     function()
       if(not IsValid(mtDesk.__npx)) then return end
       if(mtDesk.__npx:IsCurrentSchedule(mtDesk.__move)) then return end
+      if(mtDesk.__npx:GetPos():DistToSqr(mtDesk.__out) > 10) then return end
+      -- if(mtDesk.__npx:GetPos():DistToSqr(mtDesk.__out)) then return end
       timer.Simple(mtDesk.__dstr,
         function()
           SafeRemoveEntity(mtDesk.__npx)
