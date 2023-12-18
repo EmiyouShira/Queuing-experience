@@ -18,6 +18,15 @@ local mtDesk = {}
       mtDesk.__shed = 0.1 -- in seconds
       -- Remove after the final destination
       mtDesk.__dstr = 1 -- in seconds
+      -- Amount of units to scan for NPC
+      mtDesk.__tnpc = 100
+      -- Function filter for NPC trace
+      mtDesk.__trft = {
+        start  = Vector(), -- Start position
+        endpos = Vector(), -- End position
+        ignoreworld = true, -- Ignore hitting world
+        filter = function(ent) return ent:IsNPC() end
+      }
 local function newDesk(pos)
   local mvPos, miSiz = Vector(pos), 1
   local mtData = {Size = 0}
@@ -39,22 +48,45 @@ local function newDesk(pos)
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
     end; miSiz = miSiz + iSiz;return self
   end
+  -- Check when slot used
+  function self:IsIndex(idx)
+    local idx = (tonumber(idx) or 0)
+          idx = math.floor(idx)
+    if(idx < 1) then return nil end
+    if(idx > miSiz) then return nil end
+    return idx -- Actual index
+  end
   -- Updates queue node
   function self:SetNode(idx, pos)
-    local iIdx = (tonumber(idx) or 0)
-          iIdx = math.floor(iIdx)
-    if(iIdx < 1) then return end
-    if(iIdx > miSiz) then return end
-    mtData[iIdx].Pos:Set(pos)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return self end
+    mtData[idx].Pos:Set(pos)
     return self
   end
   -- Reads queue node
   function self:GetNode(idx)
-    local iIdx = (tonumber(idx) or 0)
-          iIdx = math.floor(iIdx)
-    if(iIdx < 1) then return end
-    if(iIdx > miSiz) then return end
-    return Vector(mtData[iIdx].Pos)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return Vector() end
+    return Vector(mtData[idx].Pos)
+  end
+  -- Reads queue NPC
+  function self:SetEntity(idx, ent)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return self end
+    if(not IsValid(ent)) then return self end
+    mtData[idx].Ent = ent; return self
+  end
+  -- Reads queue NPC
+  function self:GetEntity(idx)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return nil end
+    return mtData[idx].Ent
+  end
+  -- Check for valid entity under index
+  function self:IsEntity(idx)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return false end
+    return IsValid(mtData[idx].Ent)
   end
   -- Check whenever NPC exists
   function self:IsHere(npc)
@@ -77,24 +109,17 @@ local function newDesk(pos)
     return (mtData.Size >= miSiz)
   end
   -- Check when slot used
-  function self:IsIndex(idx)
-    local idx = (tonumber(idx) or 0)
-          idx = (idx > 0) and math.floor(idx) or 0
-          idx = (idx > 0) and idx or 0
-    if(idx == 0) then return nil end
-    local dat = mtData[idx]
-    if(not dat) then return nil end
-    return (IsValid(dat.Ent) and idx or nil)
-  end
-  -- Check when slot used
-  function self:IsFront(idx)
-    local idx = (tonumber(idx) or 0)
-          idx = (idx > 0) and math.floor(idx) or 0
-          idx = (idx > 0) and idx or 0
-    if(idx == 0) then return nil end
-    local pos = mtData[idx].Pos + Vector(0,0,15)
-    local ent = ents.FindInSphere(pos, 5)
-    return ent[1]
+  function self:GetTrace(idx)
+    local idx = self:IsIndex(idx)
+    if(not idx) then return nil end
+    local mar = Vector(0,0,mtDesk.__tnpc)
+    local pos = mtData[idx].Pos
+    local dat = mtDesk.__trft
+          dat.start:Set(pos); dat.start:Add(mar)
+          mar.z = -mar.z -- We need for top to bottom
+          dat.endpos:Set(pos); dat.endpos:Add(mar)
+    local trn = util.TraceLine(mtDesk.__trft)
+    return trn.Hit -- NPC has been hit
   end
   -- Push NPC at the end of the queue
   function self:Push(npc)
@@ -143,15 +168,15 @@ local function newDesk(pos)
       end
     end; return self
   end
-  function self:GerRadius(str, mar)
+  function self:GerRadius(org, mar)
     local pos = LocalPlayer():GetPos()
-    return (mar * 200) / str:Distance(pos)
+    return (mar * 200) / org:Distance(pos)
   end
   function self:Draw()
     cam.Start2D()
-      local str, idx = mtData[1].Pos, self:IsIndex(1)
+      local str, hit = mtData[1].Pos, self:GetTrace(1)
       local xy = str:ToScreen()
-      local cr, cg = (idx and 0 or 255), (idx and 255 or 0)
+      local cr, cg = (hit and 0 or 255), (hit and 255 or 0)
       surface.SetDrawColor(cr, cg, 0)
       surface.DrawCircle(xy.x, xy.y, self:GerRadius(str, 10), cr, cg, 0)
       for cnt = 2, miSiz do
@@ -159,9 +184,9 @@ local function newDesk(pos)
         local pop = mtData[cnt-1].Pos
         local xyc = poc:ToScreen()
         local xyp = pop:ToScreen()
-        idx = self:IsIndex(cnt)
-        cr = (idx and 0 or 255)
-        cg = (idx and 255 or 0)
+        hit = self:GetTrace(cnt)
+        cr = (hit and 0 or 255)
+        cg = (hit and 255 or 0)
         surface.SetDrawColor(cr, cg, 0)
         surface.DrawLine(xyp.x, xyp.y, xyc.x, xyc.y)
         surface.DrawCircle(xyc.x, xyc.y, self:GerRadius(poc, 10), cr, cg, 0)
@@ -186,7 +211,7 @@ local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719))
 local vNod = oDesk:GetNode(10); vNod.z = vNod.z + 40
       oDesk:SetNode(10, vNod)
 
-if(not oDesk) then error("Could not allocate desk object!") end
+if(not oDesk) then error("Failed allocating desk object!") end
 
 if(CLIENT) then
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
@@ -232,7 +257,6 @@ else
       if(not IsValid(mtDesk.__npx)) then return end
       if(mtDesk.__npx:IsCurrentSchedule(mtDesk.__move)) then return end
       if(mtDesk.__npx:GetPos():DistToSqr(mtDesk.__out) > 10) then return end
-      -- if(mtDesk.__npx:GetPos():DistToSqr(mtDesk.__out)) then return end
       timer.Simple(mtDesk.__dstr,
         function()
           SafeRemoveEntity(mtDesk.__npx)
