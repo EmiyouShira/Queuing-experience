@@ -211,7 +211,7 @@ local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719))
 local vNod = oDesk:GetNode(10); vNod.z = vNod.z + 40
       oDesk:SetNode(10, vNod)
 
-if(not oDesk) then error("Could not allocate desk object!") end
+if(not oDesk) then error("Failed allocating desk object!") end
 
 if(CLIENT) then
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
