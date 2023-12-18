@@ -11,30 +11,34 @@ local mtDesk = {}
       -- NPC Move type
       mtDesk.__move = SCHED_FORCED_GO_RUN
       -- NPC Exit Interval
-      mtDesk.__pull = 10 -- in seconds
+      mtDesk.__pull = 16 -- in seconds
       -- NPC Arrival Interval
       mtDesk.__push = 2 -- in seconds
       -- Check when shedule is finished
       mtDesk.__shed = 0.1 -- in seconds
       -- Remove after the final destination
       mtDesk.__dstr = 1 -- in seconds
-local function newDesk(pos, dir, dst, siz)      
-  local mvPos = Vector(pos)
-    if(mvPos:IsZero()) then return nil end
-  local mvDir = Vector(dir); mvDir.z = 0
-    if(mvDir:IsZero()) then return nil end
-  local mnDst = (tonumber(dst) or 0)
-    if(mnDst <= 0) then return nil end
-  local miSiz = math.floor(tonumber(siz) or 0)
-    if(miSiz <= 0) then return nil end
+local function newDesk(pos)
+  local mvPos, miSiz = Vector(pos), 1
   local mtData = {Size = 0}
+        mtData[1] = {Pos = Vector(mvPos), Ent = nil}
   local self = {}; setmetatable(self, mtDesk)
-  -- Allocate positions list and fix internals
-  mvDir:Normalize()
-  for idx = 1, miSiz do
-    local muo = ((idx - 1) * mnDst)
-    mtData[idx] = {Pos = Vector(), Ent = nil}
-    mtData[idx].Pos:Set(mvPos + muo * mvDir)
+  -- Extend the desk queue
+  function self:Extend(dir, dst, siz)
+    local vDir = Vector(dir); vDir:Normalize()
+      if(vDir:IsZero()) then return nil end
+    local nDst = (tonumber(dst) or 0)
+      if(nDst <= 0) then return nil end
+    local iSiz = math.floor(tonumber(siz) or 0)
+      if(iSiz <= 0) then return nil end
+    local vTop = mtData[miSiz].Pos
+    local vPos =  Vector((miSiz == 1) and mvPos or vTop)
+    print(vPos, mtData[miSiz].Pos, mvPos)
+    for idx = 1, iSiz do
+      local muo = (idx * nDst)
+      mtData[miSiz + idx] = {Pos = Vector(), Ent = nil}
+      mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
+    end; miSiz = miSiz + iSiz;return self
   end
   -- Check whenever NPC exists
   function self:IsHere(npc)
@@ -108,7 +112,6 @@ local function newDesk(pos, dir, dst, siz)
             mtData[src].Ent = nil
           end
           if(idx ~= 0 and not IsValid(mtData[crr].Ent)) then
-            print(mtData[crr].Ent, crr, idx)
             mtData[crr].Ent = mtData[idx].Ent
             mtData[idx].Ent = nil
           end
@@ -158,7 +161,12 @@ local function newDesk(pos, dir, dst, siz)
   return self
 end
 
-local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719), Vector(-1,0,0), 100, 10)
+local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719))
+      oDesk:Extend(Vector(-1,0,0), 100, 5)
+      oDesk:Extend(Vector(0,1,0), 100, 1)
+      oDesk:Extend(Vector(1,0,0), 100, 4)
+      oDesk:Extend(Vector(0,1,0), 100, 1)
+      oDesk:Extend(Vector(-1,0,0), 100, 4)
 
 if(not oDesk) then error("Could not allocate desk object!") end
 
