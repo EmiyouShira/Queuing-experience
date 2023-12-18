@@ -33,12 +33,28 @@ local function newDesk(pos)
       if(iSiz <= 0) then return nil end
     local vTop = mtData[miSiz].Pos
     local vPos =  Vector((miSiz == 1) and mvPos or vTop)
-    print(vPos, mtData[miSiz].Pos, mvPos)
     for idx = 1, iSiz do
       local muo = (idx * nDst)
       mtData[miSiz + idx] = {Pos = Vector(), Ent = nil}
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
     end; miSiz = miSiz + iSiz;return self
+  end
+  -- Updates queue node
+  function self:SetNode(idx, pos)
+    local iIdx = (tonumber(idx) or 0)
+          iIdx = math.floor(iIdx)
+    if(iIdx < 1) then return end
+    if(iIdx > miSiz) then return end
+    mtData[iIdx].Pos:Set(pos)
+    return self
+  end
+  -- Reads queue node
+  function self:GetNode(idx)
+    local iIdx = (tonumber(idx) or 0)
+          iIdx = math.floor(iIdx)
+    if(iIdx < 1) then return end
+    if(iIdx > miSiz) then return end
+    return Vector(mtData[iIdx].Pos)
   end
   -- Check whenever NPC exists
   function self:IsHere(npc)
@@ -167,6 +183,8 @@ local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719))
       oDesk:Extend(Vector(1,0,0), 100, 4)
       oDesk:Extend(Vector(0,1,0), 100, 1)
       oDesk:Extend(Vector(-1,0,0), 100, 4)
+local vNod = oDesk:GetNode(10); vNod.z = vNod.z + 40
+      oDesk:SetNode(10, vNod)
 
 if(not oDesk) then error("Could not allocate desk object!") end
 
