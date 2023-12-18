@@ -6,12 +6,16 @@ local mtDesk = {}
       mtDesk.__out = Vector(800, -400,-143.719)
       -- Table of all the NPC
       mtDesk.__npc = {}
+      -- Caontains the NPC which exits
+      mtDesk.__npx = nil
       -- NPC Move type
-      mtDesk.__move = SCHED_FORCED_GO
+      mtDesk.__move = SCHED_FORCED_GO_RUN
       -- NPC Arrival Interval
-      mtDesk.__pull = 16 -- in seconds
+      mtDesk.__pull = 10 -- in seconds
       -- Timer Interval
-      mtDesk.__push = 4 -- in seconds
+      mtDesk.__push = 2 -- in seconds
+      -- Check when shedule is finished
+      mtDesk.__shed = 0.1 -- in seconds
       -- Remove after the final destination
       mtDesk.__dstr = 1 -- in seconds
 local function newDesk(pos, dir, dst, siz)      
@@ -43,10 +47,10 @@ local function newDesk(pos, dir, dst, siz)
     end; return false
   end
   -- Move NPC to desired position
-  function self:npcMove(npc, pos)
+  function self:Move(npc, pos)
     if(not IsValid(npc)) then return end
     npc:SetSaveValue("m_vecLastPosition", pos)
-    npc:SetSchedule(SCHED_FORCED_GO)
+    npc:SetSchedule(mtDesk.__move)
   end
   -- Check when full
   function self:IsFull()
@@ -118,7 +122,7 @@ local function newDesk(pos, dir, dst, siz)
     for idx = 1, miSiz do
       local v = mtData[idx]
       if(IsValid(v.Ent)) then
-        self:npcMove(v.Ent, v.Pos)
+        self:Move(v.Ent, v.Pos)
       end
     end; return self
   end
@@ -162,56 +166,54 @@ local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719), Vector(-1,0,0), 100, 1
 
 if(not oDesk) then error("Could not allocate desk object!") end
 
-hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
-hook.Add("PlayerSpawnedNPC", "hook_npc_queue",
-  function(ply, npc)
-    if(not IsValid(npc)) then return end
-    mtDesk.__npc[tostring(npc:EntIndex())] = npc
-    oDesk:Push(npc)
-  end)
+if(CLIENT) then
+  hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
+  hook.Add("PreDrawHUD", "hook_npc_queue_cl",
+    function()
+      oDesk:Draw()
+    end)
+else
+  hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
+  hook.Add("PlayerSpawnedNPC", "hook_npc_queue",
+    function(ply, npc)
+      if(not IsValid(npc)) then return end
+      mtDesk.__npc[tostring(npc:EntIndex())] = npc
+      oDesk:Push(npc)
+    end)
 
-hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
-hook.Add("PreDrawHUD", "hook_npc_queue_cl",
-  function()
-    oDesk:Draw()
-  end)
+  -- Timer function to check availability and handle NPC arrivals
+  -- It will constantly try to pit NPCs at the queue desk
+  timer.Remove("hook_npc_queue_push")
+  timer.Create("hook_npc_queue_push", mtDesk.__push, 0,
+    function()
+      for idx, npc in pairs(mtDesk.__npc) do
+        oDesk:Push(npc):Arrange():Stay()
+      end
+    end)
 
--- Timer function to check availability and handle NPC arrivals
--- It will constantly try to pit NPCs at the queue desk
-timer.Remove("hook_npc_queue_push")
-timer.Create("hook_npc_queue_push", mtDesk.__push, 0, function()
-  for idx, npc in pairs(mtDesk.__npc) do
-    oDesk:Push(npc):Arrange():Stay()
-  end
-end)
+  -- Timer function to check when NPC leaves
+  timer.Remove("hook_npc_queue_pull")
+  timer.Create("hook_npc_queue_pull", mtDesk.__pull, 0,
+    function()
+      mtDesk.__npx = oDesk:Pull()
+      print("PUNW", mtDesk.__npx)
+      if(IsValid(mtDesk.__npx)) then
+        print("PUMV", mtDesk.__npx, mtDesk.__out)
+        oDesk:Move(mtDesk.__npx, mtDesk.__out)
+        mtDesk.__npc[tostring(mtDesk.__npx:EntIndex())] = nil
+      end
+      oDesk:Arrange():Stay()
+    end)
 
--- Timer function to check when NPC leaves
-local puNPC
-timer.Remove("hook_npc_queue_pull")
-timer.Create("hook_npc_queue_pull", mtDesk.__pull, 0, function()
-  if(IsValid(puNPC)) then
-    print("PUVV", mtDesk.__dstr, puNPC)
-    if(not puNPC:IsCurrentSchedule(mtDesk.__move)) then
-      print("PURT", mtDesk.__dstr, puNPC)
+  timer.Remove("hook_npc_queue_ched")
+  timer.Create("hook_npc_queue_ched", mtDesk.__shed, 0,
+    function()
+      if(not IsValid(mtDesk.__npx)) then return end
+      if(mtDesk.__npx:IsCurrentSchedule(mtDesk.__move)) then return end
       timer.Simple(mtDesk.__dstr,
         function()
-          print("PURM", puNPC)
-          SafeRemoveEntity(puNPC)
-          puNPC = nil
+          SafeRemoveEntity(mtDesk.__npx)
+          mtDesk.__npx = nil
         end)
-    end
-  else
-    local puNPC = oDesk:Pull()
-    print("PUNW", puNPC)
-    if(IsValid(puNPC)) then
-      print("PUMV", puNPC, mtDesk.__out)
-      oDesk:npcMove(puNPC, mtDesk.__out)
-      mtDesk.__npc[tostring(puNPC:EntIndex())] = nil
-      oDesk:Arrange():Stay()
-    else
-      print("PUCL", puNPC)
-      puNPC = nil
-    end
-  end
-end)
-
+    end)
+end
