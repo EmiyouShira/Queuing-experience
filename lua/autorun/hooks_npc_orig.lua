@@ -205,9 +205,11 @@ end
 
 local oDesk = newDesk(Vector(3369.71,1296.38,16.2813))
       oDesk:Extend(Vector(1,0,0), 60, 1)
-      oDesk:SetNode(2, Vector(3417.39,1393.96,16.2812))
+      oDesk:SetNode(2, Vector(3400.85,1357.97,16.2813))
       oDesk:Extend(Vector(1,0,0), 60, 1)
-      oDesk:SetNode(3, Vector(3374.88,1486.17,16.2812))
+      oDesk:SetNode(3, Vector(3397.96,1433.85,16.2813))
+      oDesk:Extend(Vector(1,0,0), 60, 1)
+      oDesk:SetNode(4, Vector(3374.88,1486.17,16.2812))
       oDesk:Extend(Vector(-1,0,0), 60, 6)
       oDesk:Extend(Vector(0,-1,0), 60, 2)
       oDesk:Extend(Vector(-1,0,0), 60, 1)
