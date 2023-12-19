@@ -3,7 +3,7 @@ local mtDesk = {}
       -- Metatable method indexing
       mtDesk.__index = mtDesk
       -- Where to go after pulling
-      mtDesk.__out = Vector(800, -400,-143.719)
+      mtDesk.__out = Vector(2635.5,1241.34,16.2813)
       -- Table of all the NPC
       mtDesk.__npc = {}
       -- Caontains the NPC which exits
@@ -176,43 +176,39 @@ local function newDesk(pos)
     return (mar * 200) / org:Distance(pos)
   end
   function self:Draw()
-    cam.Start2D()
-      local str, hit = mtData[1].Pos, self:GetTrace(1)
-      local xy = str:ToScreen()
-      local cr, cg = (hit and 0 or 255), (hit and 255 or 0)
+    local str, hit = mtData[1].Pos, self:GetTrace(1)
+    local xy = str:ToScreen()
+    local cr, cg = (hit and 0 or 255), (hit and 255 or 0)
+    surface.SetDrawColor(cr, cg, 0)
+    surface.DrawCircle(xy.x, xy.y, self:GerRadius(str, 10), cr, cg, 0)
+    for cnt = 2, miSiz do
+      local poc = mtData[cnt].Pos
+      local pop = mtData[cnt-1].Pos
+      local xyc = poc:ToScreen()
+      local xyp = pop:ToScreen()
+      hit = self:GetTrace(cnt)
+      cr = (hit and 0 or 255)
+      cg = (hit and 255 or 0)
       surface.SetDrawColor(cr, cg, 0)
-      surface.DrawCircle(xy.x, xy.y, self:GerRadius(str, 10), cr, cg, 0)
-      for cnt = 2, miSiz do
-        local poc = mtData[cnt].Pos
-        local pop = mtData[cnt-1].Pos
-        local xyc = poc:ToScreen()
-        local xyp = pop:ToScreen()
-        hit = self:GetTrace(cnt)
-        cr = (hit and 0 or 255)
-        cg = (hit and 255 or 0)
-        surface.SetDrawColor(cr, cg, 0)
-        surface.DrawLine(xyp.x, xyp.y, xyc.x, xyc.y)
-        surface.DrawCircle(xyc.x, xyc.y, self:GerRadius(poc, 10), cr, cg, 0)
-      end
-      local poo = mtDesk.__out
-      local xyo = poo:ToScreen()
-      surface.SetDrawColor(255, 255, 0)
-      surface.DrawLine(xy.x, xy.y, xyo.x, xyo.y)
-      surface.DrawCircle(xyo.x, xyo.y, self:GerRadius(poo, 20), 255, 255, 0)
-    cam.End2D()
+      surface.DrawLine(xyp.x, xyp.y, xyc.x, xyc.y)
+      surface.DrawCircle(xyc.x, xyc.y, self:GerRadius(poc, 10), cr, cg, 0)
+    end
+    local poo = mtDesk.__out
+    local xyo = poo:ToScreen()
+    surface.SetDrawColor(255, 255, 0)
+    surface.DrawLine(xy.x, xy.y, xyo.x, xyo.y)
+    surface.DrawCircle(xyo.x, xyo.y, self:GerRadius(poo, 20), 255, 255, 0)
     return self
   end
   return self
 end
 
-local oDesk = newDesk(Vector(646.266 ,-949.261,-143.719))
+local oDesk = newDesk(Vector(3369.71,1296.38,16.2813))
+      oDesk:Extend(Vector(1,0,0), 100, 1)
+      oDesk:SetNode(2, Vector(3417.39,1393.96,16.2812))
+      oDesk:Extend(Vector(1,0,0), 100, 1)
+      oDesk:SetNode(3, Vector(3374.88,1486.17,16.2812))
       oDesk:Extend(Vector(-1,0,0), 100, 5)
-      oDesk:Extend(Vector(0,1,0), 100, 1)
-      oDesk:Extend(Vector(1,0,0), 100, 4)
-      oDesk:Extend(Vector(0,1,0), 100, 1)
-      oDesk:Extend(Vector(-1,0,0), 100, 4)
-local vNod = oDesk:GetNode(10); vNod.z = vNod.z + 40
-      oDesk:SetNode(10, vNod)
 
 if(not oDesk) then error("Failed allocating desk object!") end
 
@@ -220,7 +216,9 @@ if(CLIENT) then
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
+      cam.Start2D()
       oDesk:Draw()
+      cam.End2D()
     end)
 else
   hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
