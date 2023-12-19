@@ -9,7 +9,7 @@ local mtDesk = {}
       -- Caontains the NPC which exits
       mtDesk.__npx = nil
       -- NPC Move type
-      mtDesk.__move = SCHED_FORCED_GO_RUN
+      mtDesk.__move = SCHED_FORCED_GO
       -- NPC Exit Interval
       mtDesk.__pull = 16 -- in seconds
       -- NPC Arrival Interval
@@ -244,6 +244,8 @@ else
   timer.Create("hook_npc_queue_pull", mtDesk.__pull, 0,
     function()
       if(IsValid(mtDesk.__npx)) then return end
+      local ent = oDesk:GetEntity(1)
+      if(IsValid(ent) and ent:IsCurrentSchedule(mtDesk.__move)) then return end
       mtDesk.__npx = oDesk:Pull()
       if(IsValid(mtDesk.__npx)) then
         oDesk:Move(mtDesk.__npx, mtDesk.__out)
