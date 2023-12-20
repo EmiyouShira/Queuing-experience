@@ -6,7 +6,8 @@ local mtQueue = {}
       mtQueue.__out = { ID = 0, -- Track the exit node
         Vector(3124.45,1278.14,16.2813),
         Vector(2787.98,1332.3,16.2813),
-        Vector(2737.35,1432.02,16.2813),
+        Vector(2768.52,1426.19,16.2813),
+        Vector(2701.32,1426.65,16.2813),
         Vector(2635.5,1241.34,16.2813)
       }
       -- Where to go after pulling
@@ -60,7 +61,7 @@ local function NewQueue(pos)
     end; miSiz = miSiz + iSiz;return self
   end
   -- Check when slot used
-  function self:IsIndex(idx)
+  function self:GetIndex(idx)
     local idx = (tonumber(idx) or 0)
           idx = math.floor(idx)
     if(idx < 1) then return nil end
@@ -69,33 +70,33 @@ local function NewQueue(pos)
   end
   -- Updates queue node
   function self:SetNode(idx, pos)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return self end
     mtData[idx].Pos:Set(pos)
     return self
   end
   -- Reads queue node
   function self:GetNode(idx)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return Vector() end
     return Vector(mtData[idx].Pos)
   end
   -- Reads queue NPC
   function self:SetEntity(idx, ent)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return self end
     if(not IsValid(ent)) then return self end
     mtData[idx].Ent = ent; return self
   end
   -- Reads queue NPC
   function self:GetEntity(idx)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return nil end
     return mtData[idx].Ent
   end
   -- Check for valid entity under index
   function self:IsEntity(idx)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return false end
     return IsValid(mtData[idx].Ent)
   end
@@ -129,7 +130,7 @@ local function NewQueue(pos)
   end
   -- Check when slot used
   function self:GetTrace(idx)
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return nil end
     local mar = Vector(0,0,mtQueue.__tnpc)
     local pos = mtData[idx].Pos
@@ -159,26 +160,40 @@ local function NewQueue(pos)
   end
   -- Rearange NPC in the queue
   function self:Arrange()
-    local idx, siz = 0, 0
+    local siz = 0
     for crr = 1, miSiz do
       local cv = mtData[crr]
       if(IsValid(cv.Ent)) then
         siz = siz + 1 -- Regster populated node
-      else -- Fill it from the next set
-        idx = 0 -- Assume valid NPC is not found
-        for src = (crr + 1), miSiz do
-          local sv = mtData[src]
-          if(IsValid(sv.Ent)) then
-            idx = src; break
-          else -- Save index of first valid
-            sv.Ent = nil
+        if(not mtQueue.__hive) then
+          local pi = self:GetIndex(crr - 1)
+          if(pi) then
+            local pv = mtData[pi]
+            local tr = self:GetTrace(pi)
+            local mv = self:IsMove(cv.Ent)
+            if((tr and not tr.Hit) and not mv and not pv.Ent) then
+              pv.Ent = cv.Ent -- Move NPC to current pointer
+              cv.Ent = nil    -- Remove the NPC from the slot
+            end
           end
-        end -- When npc is found assign it to the empty slot
-        if(idx ~= 0 and not IsValid(cv.Ent)) then
-          local iv = mtData[idx]
-          cv.Ent = iv.Ent -- Move NPC to current pointer
-          iv.Ent = nil    -- Remove the NPC from the slot
-          siz = siz + 1   -- Increment NPC count
+        end
+      else -- Fill it from the next set
+        if(mtQueue.__hive) then
+          local idx = 0 -- Assume valid NPC is not found
+          for src = (crr + 1), miSiz do
+            local sv = mtData[src]
+            if(IsValid(sv.Ent)) then
+              idx = src; break
+            else -- Save index of first valid
+              sv.Ent = nil
+            end
+          end -- When npc is found assign it to the empty slot
+          if(idx ~= 0 and not IsValid(cv.Ent)) then
+            local iv = mtData[idx]
+            cv.Ent = iv.Ent -- Move NPC to current pointer
+            iv.Ent = nil    -- Remove the NPC from the slot
+            siz = siz + 1   -- Increment NPC count
+          end
         end
       end
     end -- Assign the new NPC count
@@ -208,7 +223,7 @@ local function NewQueue(pos)
   -- Calculate colors
   function self:GetColor(idx)
     local co = mtQueue.__colr
-    local idx = self:IsIndex(idx)
+    local idx = self:GetIndex(idx)
     if(not idx) then return co end
     local hit = self:GetTrace(idx).Hit
     co.r = (hit and 0 or 255)
@@ -244,7 +259,6 @@ local function NewQueue(pos)
       surface.DrawLine(xyn.x, xyn.y, xyo.x, xyo.y)
       surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[out], 20), mtQueue.__cout)
     end
-
     return self
   end
   return self
@@ -339,8 +353,9 @@ else
   timer.Create("hook_npc_queue_push", mtQueue.__push, 0,
     function()
       for idx, npc in pairs(mtQueue.__npc) do
-        oQ:Push(npc):Arrange():Relocate()
+        oQ:Push(npc)
       end
+      oQ:Arrange():Relocate()
     end)
 
   -- Timer function to check when NPC leaves
