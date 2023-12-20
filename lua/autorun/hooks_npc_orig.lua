@@ -3,7 +3,12 @@ local mtQueue = {}
       -- Metatable method indexing
       mtQueue.__index = mtQueue
       -- Where to go after pulling
-      mtQueue.__out = Vector(2635.5,1241.34,16.2813)
+      mtQueue.__out = { ID = 0, -- Track the exit node
+        Vector(3124.45,1278.14,16.2813),
+        Vector(2787.98,1332.3,16.2813),
+        Vector(2737.35,1432.02,16.2813),
+        Vector(2635.5,1241.34,16.2813)
+      }
       -- Where to go after pulling
       mtQueue.__cout = Color(255,255,0,255)
       -- Table of all the NPC
@@ -15,9 +20,9 @@ local mtQueue = {}
       -- NPC Move type
       mtQueue.__move = SCHED_FORCED_GO_RUN
       -- NPC Exit Interval
-      mtQueue.__pull = 16 -- in seconds
+      mtQueue.__pull = 10 -- in seconds
       -- NPC Arrival Interval
-      mtQueue.__push = 2 -- in seconds
+      mtQueue.__push = 3 -- in seconds
       -- Check when shedule is finished
       mtQueue.__shed = 0.1 -- in seconds
       -- Remove after the final destination
@@ -228,14 +233,27 @@ local function NewQueue(pos)
       surface.DrawCircle(xyc.x, xyc.y, self:GetRadius(poc, 10), ccr)
     end
     local poo = mtQueue.__out
-    local xyo = poo:ToScreen()
+    local xyo = poo[1]:ToScreen()
     surface.SetDrawColor(mtQueue.__cout)
     surface.DrawLine(xy.x, xy.y, xyo.x, xyo.y)
-    surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo, 20), mtQueue.__cout)
+    surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[1], 20), mtQueue.__cout)
+    for out = 2, #poo do
+      local xyo = poo[out]:ToScreen()
+      local xyn = poo[out-1]:ToScreen()
+      surface.SetDrawColor(mtQueue.__cout)
+      surface.DrawLine(xyn.x, xyn.y, xyo.x, xyo.y)
+      surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[out], 20), mtQueue.__cout)
+    end
+
     return self
   end
   return self
 end
+
+--[[ E2 code gor generating vector locations
+  print(entity():pos())
+  selfDestruct()
+]]
 
 local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
       oQ:Extend(Vector(1,0,0), 60, 1)
@@ -262,10 +280,52 @@ if(CLIENT) then
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
       cam.Start2D()
-      oQ:Draw()
+        oQ:Draw()
       cam.End2D()
     end)
+  hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
+  hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
+    function(ply, txt, tem, xxx)
+      --if(not ply:IsAdmin()) then return end
+      net.Start("hook_npc_queue_msg")
+        net.WriteEntity(ply)
+        net.WriteString(txt)
+      net.SendToServer()
+    end)
 else
+  -- Allocate user message
+  util.AddNetworkString("hook_npc_queue_msg")
+  -- Server notification function
+  local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
+  local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
+  local function notifyPlayer(ply, txt)
+    ply:SendLua(fmtNot:format("["..ply:Nick().."]: <"..tostring(txt)..">"))
+    ply:SendLua(fmtPly:format(math.random(1, 4)))
+  end
+  -- Message reciever function
+  local function recieveQueueConfigNPC()
+    local ply, txt = net.ReadEntity(), net.ReadString()
+    if(not IsValid(ply)) then return end
+    local cut = ":";
+    local txt = txt:gsub("%s+", cut)
+    local dat = cut:Explode(txt)
+    local key = "__"..dat[1]
+    local mva = mtQueue[key]
+    if(not mva) then return end
+    local typ = type(mva)
+    if(typ == "string") then
+      mtQueue[key] = tostring(dat[2] or "")
+    elseif(typ == "number") then
+      mtQueue[key] = (tonumber(dat[2]) or 0)
+    elseif(typ == "boolean") then
+      mtQueue[key] = tobool(dat[2])
+    else
+      notifyPlayer(ply, typ..":"..tostring(dat[2] or ""))
+    end
+    notifyPlayer(ply, mtQueue[key])
+  end
+  net.Receive("hook_npc_queue_msg", recieveQueueConfigNPC)
+  -- Do the locic with timers
   hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
   hook.Add("PlayerSpawnedNPC", "hook_npc_queue",
     function(ply, npc)
@@ -273,7 +333,6 @@ else
       mtQueue.__npc[tostring(npc:EntIndex())] = npc
       oQ:Push(npc)
     end)
-
   -- Timer function to check availability and handle NPC arrivals
   -- It will constantly try to pit NPCs at the queue desk
   timer.Remove("hook_npc_queue_push")
@@ -293,7 +352,9 @@ else
       if(IsValid(ent) and oQ:IsMove(ent)) then return end
       mtQueue.__npx = oQ:Pull()
       if(IsValid(mtQueue.__npx)) then
-        oQ:Move(mtQueue.__npx, mtQueue.__out)
+        local out = mtQueue.__out
+        out.ID = out.ID + 1
+        oQ:Move(mtQueue.__npx, out[out.ID])
         mtQueue.__npc[tostring(mtQueue.__npx:EntIndex())] = nil
       end
       oQ:Arrange():Relocate()
@@ -303,11 +364,19 @@ else
   timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
     function()
       if(not IsValid(mtQueue.__npx)) then return end
-      if(oQ:IsMove(mtQueue.__npx, mtQueue.__out)) then return end
-      timer.Simple(mtQueue.__dstr,
-        function()
-          SafeRemoveEntity(mtQueue.__npx)
-          mtQueue.__npx = nil
-        end)
+      local out = mtQueue.__out
+      if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
+      out.ID = out.ID + 1
+      if(out[out.ID]) then
+        oQ:Move(mtQueue.__npx, out[out.ID])
+      else
+        if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
+        timer.Simple(mtQueue.__dstr,
+          function()
+            SafeRemoveEntity(mtQueue.__npx)
+            mtQueue.__npx = nil
+            mtQueue.__out.ID = 0
+          end)
+      end
     end)
 end
