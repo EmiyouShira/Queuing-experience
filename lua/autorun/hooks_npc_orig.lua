@@ -10,20 +10,22 @@ local mtQueue = {}
         Vector(2701.32,1426.65,16.2813),
         Vector(2635.5,1241.34,16.2813)
       }
-      -- Where to go after pulling
+      -- Color for out trajectory debug
       mtQueue.__cout = Color(255,255,0,255)
       -- Table of all the NPC
       mtQueue.__npc = {}
-      -- Caontains the NPC which exits
+      -- Contains the NPC which exits
       mtQueue.__npx = nil
+      -- Contains the NPC pulled from sequential
+      mtQueue.__nps = nil
       -- Enable to act as a hive mind
-      mtQueue.__hive = true
+      mtQueue.__hive = false
       -- NPC Move type
       mtQueue.__move = SCHED_FORCED_GO_RUN
       -- NPC Exit Interval
-      mtQueue.__pull = 10 -- in seconds
+      mtQueue.__pull = 4 -- in seconds
       -- NPC Arrival Interval
-      mtQueue.__push = 3 -- in seconds
+      mtQueue.__push = 1 -- in seconds
       -- Check when shedule is finished
       mtQueue.__shed = 0.1 -- in seconds
       -- Remove after the final destination
@@ -39,6 +41,10 @@ local mtQueue = {}
         ignoreworld = true, -- Ignore hitting world
         filter = function(ent) return ent:IsNPC() end
       }
+      mtQueue.__tostring = function(o)
+        local a, c = o:GetSize()
+        return "[npc_queue]["..a..":"..c.."]"
+      end
 local function NewQueue(pos)
   local mvPos, miSiz = Vector(pos), 1
   local mtData = {Size = 0}
@@ -58,8 +64,36 @@ local function NewQueue(pos)
       local muo = (idx * nDst)
       mtData[miSiz + idx] = {Pos = Vector(), Ent = nil}
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
-    end; miSiz = miSiz + iSiz;return self
+    end; miSiz = miSiz + iSiz; return self
   end
+  -- Clear queue state
+  function self:Clear()
+    for idx = 1, miSiz do
+      local cv = mtData[idx]
+      local tr = self:GetTrace(idx)
+      SafeRemoveEntity(cv.Ent)
+      SafeRemoveEntity(tr.Ent)
+      cv.Ent = nil
+    end; mtData.Size = 0
+    return self
+  end
+  -- Update count of valid slots
+  function self:Count()
+    local siz = 0
+    for idx = 1, miSiz do local cv = mtData[idx]
+      if(IsValid(cv.Ent)) then siz = siz + 1 end
+    end; mtData.Size = siz
+    return self
+  end
+  -- Read queue size
+  function self:GetSize()
+    local siz = 0
+    for idx = 1, miSiz do
+      local cv = mtData[idx]
+      if(IsValid(cv.Ent)) then siz = siz + 1 end
+    end; return siz, mtData.Size
+  end
+
   -- Check when slot used
   function self:GetIndex(idx)
     local idx = (tonumber(idx) or 0)
@@ -124,10 +158,6 @@ local function NewQueue(pos)
     if(pos and npc:GetPos():DistToSqr(pos) > 10) then return true end
     return false -- NPC has finished moving
   end
-  -- Check when full
-  function self:IsFull()
-    return (mtData.Size >= miSiz)
-  end
   -- Check when slot used
   function self:GetTrace(idx)
     local idx = self:GetIndex(idx)
@@ -136,27 +166,31 @@ local function NewQueue(pos)
     local pos = mtData[idx].Pos
     local dat = mtQueue.__trft
           dat.start:Set(pos); dat.start:Add(mar)
-          mar.z = -mar.z -- We need for top to bottom
-          dat.endpos:Set(pos); dat.endpos:Add(mar)
+          dat.endpos:Set(pos); dat.endpos:Sub(mar)
     return util.TraceLine(mtQueue.__trft)
+  end
+  -- Read the last empty index
+  function self:GetRecent()
+    local idx = 0 -- Start at zero
+    for crr = miSiz, 1, -1 do -- Loop
+      local cv = mtData[crr] -- Data row
+      if(IsValid(cv.Ent)) then -- Valid NPC
+        idx = crr; break -- Register current
+      end -- Break the loop and return index
+    end; return idx -- Empty slot index
   end
   -- Push NPC at the end of the queue
   function self:Push(npc)
-    if(self:IsFull()) then return self end
-    if(not IsValid(npc)) then return self end
-    if(self:IsHere(npc)) then return self end
-    mtData.Size = mtData.Size + 1
-    mtData[mtData.Size].Ent = npc
-    return self
+    if(not IsValid(npc)) then return false end
+    if(self:IsHere(npc)) then return false end
+    local idx = self:GetIndex(self:GetRecent() + 1)
+    if(not idx) then return false end
+    mtData[idx].Ent = npc; return true
   end
   -- Pull NPC at the front of the queue
   function self:Pull()
-    if(mtData.Size == 0) then return nil end
     local npc = mtData[1].Ent
-    if(not IsValid(npc)) then return nil end
-    mtData.Size = mtData.Size - 1
-    mtData[1].Ent = nil
-    return npc
+    mtData[1].Ent = nil; return npc
   end
   -- Rearange NPC in the queue
   function self:Arrange()
@@ -197,7 +231,7 @@ local function NewQueue(pos)
         end
       end
     end -- Assign the new NPC count
-    if(siz > 0) then mtData.Size = siz end; return self
+    return self
   end
   function self:Relocate()
     for idx = 1, miSiz do
@@ -206,8 +240,8 @@ local function NewQueue(pos)
         if(mtQueue.__hive) then
           self:Move(v.Ent, v.Pos)
         else
-          local mv = self:IsMove(v.Ent)
           local tr = self:GetTrace(idx)
+          local mv = self:IsMove(v.Ent)
           if((tr and not tr.Hit) and not mv) then
             self:Move(v.Ent, v.Pos)
           end
@@ -247,17 +281,25 @@ local function NewQueue(pos)
       surface.DrawLine(xyp.x, xyp.y, xyc.x, xyc.y)
       surface.DrawCircle(xyc.x, xyc.y, self:GetRadius(poc, 10), ccr)
     end
+    local cot = mtQueue.__cout
+    cot.r, cot.g, cot.b = 255, 255, 0
     local poo = mtQueue.__out
-    local xyo = poo[1]:ToScreen()
-    surface.SetDrawColor(mtQueue.__cout)
+    local xyo, npo = poo[1]:ToScreen(), #poo
+    surface.SetDrawColor(cot)
     surface.DrawLine(xy.x, xy.y, xyo.x, xyo.y)
-    surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[1], 20), mtQueue.__cout)
-    for out = 2, #poo do
+    surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[1], 20), cot)
+    for out = 2, npo do
       local xyo = poo[out]:ToScreen()
       local xyn = poo[out-1]:ToScreen()
-      surface.SetDrawColor(mtQueue.__cout)
+      surface.SetDrawColor(cot)
       surface.DrawLine(xyn.x, xyn.y, xyo.x, xyo.y)
-      surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[out], 20), mtQueue.__cout)
+      if(out == npo) then
+        cot.r, cot.g, cot.b = 0, 0, 255
+        surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[out], 20), cot)
+      else
+        cot.r, cot.g, cot.b = 255, 255, 0
+        surface.DrawCircle(xyo.x, xyo.y, self:GetRadius(poo[out], 20), cot)
+      end
     end
     return self
   end
@@ -300,7 +342,7 @@ if(CLIENT) then
   hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
   hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
     function(ply, txt, tem, xxx)
-      --if(not ply:IsAdmin()) then return end
+      if(not ply:IsAdmin()) then return end
       net.Start("hook_npc_queue_msg")
         net.WriteEntity(ply)
         net.WriteString(txt)
@@ -320,40 +362,77 @@ else
   local function recieveQueueConfigNPC()
     local ply, txt = net.ReadEntity(), net.ReadString()
     if(not IsValid(ply)) then return end
-    local cut = ":";
+    if(not ply:IsAdmin()) then return end
+    local cut, pss = ":", false
     local txt = txt:gsub("%s+", cut)
     local dat = cut:Explode(txt)
-    local key = "__"..dat[1]
+    local cmd = tostring(dat[1] or "")
+    local key = "__"..cmd
     local mva = mtQueue[key]
-    if(not mva) then return end
-    local typ = type(mva)
-    if(typ == "string") then
-      mtQueue[key] = tostring(dat[2] or "")
-    elseif(typ == "number") then
-      mtQueue[key] = (tonumber(dat[2]) or 0)
-    elseif(typ == "boolean") then
-      mtQueue[key] = tobool(dat[2])
+    if(mva ~= nil) then
+      local typ = type(mva)
+      if(typ == "string") then pss = true
+        mtQueue[key] = tostring(dat[2] or "")
+      elseif(typ == "number") then pss = true
+        mtQueue[key] = (tonumber(dat[2]) or 0)
+      elseif(typ == "boolean") then pss = true
+        mtQueue[key] = tobool(dat[2])
+      end
+      if(pss) then
+        notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
+      else
+        notifyPlayer(ply, "TYPE:"..typ..":"..tostring(dat[2] or ""))
+      end
     else
-      notifyPlayer(ply, typ..":"..tostring(dat[2] or ""))
+      if(cmd == "@clear") then
+        pss = true; oQ:Clear()
+      elseif(cmd == "@arrange") then
+        pss = true; oQ:Arrange()
+      elseif(cmd == "@relocate") then
+        pss = true; oQ:Relocate()
+      elseif(cmd == "@count") then
+        pss = true; oQ:Count()
+      elseif(cmd == "#string") then
+        pss = true; print(tostring(oQ))
+      end
+      if(pss) then
+        notifyPlayer(ply, cmd.."|"..tostring(dat[2] or ""))
+      else
+        notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
+      end
     end
-    notifyPlayer(ply, mtQueue[key])
   end
   net.Receive("hook_npc_queue_msg", recieveQueueConfigNPC)
+
   -- Do the locic with timers
   hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
   hook.Add("PlayerSpawnedNPC", "hook_npc_queue",
     function(ply, npc)
       if(not IsValid(npc)) then return end
-      mtQueue.__npc[tostring(npc:EntIndex())] = npc
-      oQ:Push(npc)
+      table.insert(mtQueue.__npc, npc)
     end)
+
   -- Timer function to check availability and handle NPC arrivals
   -- It will constantly try to pit NPCs at the queue desk
   timer.Remove("hook_npc_queue_push")
   timer.Create("hook_npc_queue_push", mtQueue.__push, 0,
     function()
-      for idx, npc in pairs(mtQueue.__npc) do
-        oQ:Push(npc)
+      local npc = mtQueue.__nps
+      if(IsValid(npc)) then
+        if(oQ:Push(npc)) then
+          oQ:Arrange():Relocate()
+          mtQueue.__nps = nil
+        end
+      else
+        npc = table.remove(mtQueue.__npc, 1)
+        if(IsValid(npc)) then
+          if(oQ:Push(npc)) then
+            oQ:Arrange():Relocate()
+            mtQueue.__nps = nil
+          end
+        else
+          mtQueue.__nps = nil
+        end
       end
       oQ:Arrange():Relocate()
     end)
@@ -371,8 +450,8 @@ else
         out.ID = out.ID + 1
         oQ:Move(mtQueue.__npx, out[out.ID])
         mtQueue.__npc[tostring(mtQueue.__npx:EntIndex())] = nil
+        oQ:Arrange():Relocate()
       end
-      oQ:Arrange():Relocate()
     end)
 
   timer.Remove("hook_npc_queue_ched")
@@ -385,7 +464,6 @@ else
       if(out[out.ID]) then
         oQ:Move(mtQueue.__npx, out[out.ID])
       else
-        if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
         timer.Simple(mtQueue.__dstr,
           function()
             SafeRemoveEntity(mtQueue.__npx)
