@@ -192,24 +192,30 @@ local function NewQueue(pos)
     local npc = mtData[1].Ent
     mtData[1].Ent = nil; return npc
   end
+  function self:AssignNonHive(idx)
+    local pi = self:GetIndex(idx - 1)
+    if(pi) then
+      local cv = mtData[idx]
+      local pv = mtData[pi]
+      while(not IsValid(pv.Ent)) do
+        pi = self:GetIndex(pi - 1)
+
+      end
+      local tr = self:GetTrace(pi + 1)
+      local mv = self:IsMove(cv.Ent)
+      if((tr and not tr.Hit) and not mv and not IsValid(pv.Ent)) then
+        pv.Ent = cv.Ent -- Move NPC to current pointer
+        cv.Ent = nil    -- Remove the NPC from the slot
+      end
+    end
+  end
   -- Rearange NPC in the queue
   function self:Arrange()
-    local siz = 0
     for crr = 1, miSiz do
       local cv = mtData[crr]
       if(IsValid(cv.Ent)) then
-        siz = siz + 1 -- Regster populated node
         if(not mtQueue.__hive) then
-          local pi = self:GetIndex(crr - 1)
-          if(pi) then
-            local pv = mtData[pi]
-            local tr = self:GetTrace(pi)
-            local mv = self:IsMove(cv.Ent)
-            if((tr and not tr.Hit) and not mv and not pv.Ent) then
-              pv.Ent = cv.Ent -- Move NPC to current pointer
-              cv.Ent = nil    -- Remove the NPC from the slot
-            end
-          end
+          self:AssignNonHive(crr)
         end
       else -- Fill it from the next set
         if(mtQueue.__hive) then
@@ -226,8 +232,9 @@ local function NewQueue(pos)
             local iv = mtData[idx]
             cv.Ent = iv.Ent -- Move NPC to current pointer
             iv.Ent = nil    -- Remove the NPC from the slot
-            siz = siz + 1   -- Increment NPC count
           end
+        else
+          self:AssignNonHive(crr)
         end
       end
     end -- Assign the new NPC count
