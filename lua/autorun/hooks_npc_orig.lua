@@ -216,20 +216,31 @@ local function NewQueue(pos)
   function self:Init()
     if(CLIENT) then return self end
     local rad = mtQueue.__rrnp
+    local out = mtQueue.__out
+    local vup = Vector(0,0,rad/2)
     for idx = 1, miSiz do
       local tr = self:GetTrace(idx)
-      local ent = ents.FindInSphere(self:GetNode(idx), rad)
       if(tr and tr.Hit) then
         mtData[idx].Ent = tr.Entity
       end
-      for cnt = 1, #ent do
-        if(ent[cnt] ~= tr.Entity) then
-          SafeRemoveEntity(ent[cnt])
+      if(idx > 1) then
+        local crr = self:GetNode(idx) + vup
+        local prv = self:GetNode(idx - 1) + vup
+        local dir = (crr - prv)
+        local len = dir:Length()
+        local mul = len - 2 * (rad * 0.8)
+        if(mul > 0) then
+          dir:Normalize(); dir:Mul(len - 2 * (rad * 0.8))
+          local ent = ents.FindAlongRay(prv, crr)
+                crr:Sub(dir); prv:Add(dir)
+          for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
         end
       end
+      local ent = ents.FindInSphere(self:GetNode(idx), rad)
+      for cnt = 1, #ent do
+        if(ent[cnt] ~= tr.Entity) then SafeRemoveEntity(ent[cnt]) end
+      end
     end
-    local vup = Vector(0,0,rad/2)
-    local out = mtQueue.__out
     for idx = 1, #out do
       if(idx > 1) then
         local ent = ents.FindAlongRay(out[idx-1] + vup, out[idx] + vup)
