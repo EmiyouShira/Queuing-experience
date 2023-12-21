@@ -228,11 +228,12 @@ local function NewQueue(pos)
         local prv = self:GetNode(idx - 1); prv:Add(vup)
         local dir = (crr - prv)
         local len = dir:Length()
-        local mul = len - 2 * (rad * 0.8)
-        if(mul > 0) then
-          dir:Normalize(); dir:Mul(mul)
+        local mar = (rad * 0.85)
+        local mur = len - 2 * mar
+        if(mur > 0) then
+          dir:Normalize(); dir:Mul(mar)
+          crr:Sub(dir); prv:Add(dir)
           local ent = ents.FindAlongRay(prv, crr)
-                crr:Sub(dir); prv:Add(dir)
           for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
         end
       end
