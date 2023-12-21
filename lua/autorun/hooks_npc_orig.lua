@@ -228,10 +228,11 @@ local function NewQueue(pos)
         end
       end
     end
+    local vup = Vector(0,0,rad/2)
     local out = mtQueue.__out
     for idx = 1, #out do
       if(idx > 1) then
-        local ent = ents.FindAlongRay(out[idx-1], out[idx])
+        local ent = ents.FindAlongRay(out[idx-1] + vup, out[idx] + vup)
         for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
       end
       local ent = ents.FindInSphere(out[idx], rad)
