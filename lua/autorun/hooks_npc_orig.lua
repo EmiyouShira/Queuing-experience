@@ -224,13 +224,13 @@ local function NewQueue(pos)
         mtData[idx].Ent = tr.Entity
       end
       if(idx > 1) then
-        local crr = self:GetNode(idx) + vup
-        local prv = self:GetNode(idx - 1) + vup
+        local crr = self:GetNode(idx); crr:Add(vup)
+        local prv = self:GetNode(idx - 1); prv:Add(vup)
         local dir = (crr - prv)
         local len = dir:Length()
         local mul = len - 2 * (rad * 0.8)
         if(mul > 0) then
-          dir:Normalize(); dir:Mul(len - 2 * (rad * 0.8))
+          dir:Normalize(); dir:Mul(mul)
           local ent = ents.FindAlongRay(prv, crr)
                 crr:Sub(dir); prv:Add(dir)
           for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
