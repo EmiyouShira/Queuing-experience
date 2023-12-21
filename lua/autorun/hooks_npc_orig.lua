@@ -3,7 +3,8 @@ local mtQueue = {}
       -- Metatable method indexing
       mtQueue.__index = mtQueue
       -- Where to go after pulling
-      mtQueue.__out = { ID = 0, -- Track the exit node
+      mtQueue.__out = {
+        ID = 0, -- Track the exit node
         Vector(3124.45,1278.14,16.2813),
         Vector(2787.98,1332.3,16.2813),
         Vector(2768.52,1426.19,16.2813),
@@ -32,6 +33,8 @@ local mtQueue = {}
       mtQueue.__dstr = 1 -- in seconds
       -- Amount of units to scan for NPC
       mtQueue.__tnpc = 100
+      -- Turn on/ off the draw method
+      mtQueue.__draw = true
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
       -- Function filter for NPC trace
@@ -350,18 +353,76 @@ local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
 
 if(not oQ) then error("Failed allocating desk object!") end
 
+-- Server notification function
+local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
+local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
+local function notifyPlayer(ply, txt)
+  local idx = math.random(1, 4)
+  local msg = "["..ply:Nick().."]: <"..tostring(txt)..">"
+  if(SERVER) then
+    ply:SendLua(fmtNot:format(msg))
+    ply:SendLua(fmtPly:format(idx))
+  end
+end
+
+local function queueConfigNPC(ply, txt)
+  if(not IsValid(ply)) then return end
+  if(not ply:IsAdmin()) then return end
+  local cut, pss = ":", false
+  local txt = txt:gsub("%s+", cut)
+  local dat = cut:Explode(txt)
+  local cmd = tostring(dat[1] or "")
+  local key = "__"..cmd
+  local mva = mtQueue[key]
+  if(mva ~= nil) then
+    local typ = type(mva)
+    if(typ == "string") then pss = true
+      mtQueue[key] = tostring(dat[2] or "")
+    elseif(typ == "number") then pss = true
+      mtQueue[key] = (tonumber(dat[2]) or 0)
+    elseif(typ == "boolean") then pss = true
+      mtQueue[key] = tobool(dat[2])
+    end
+    if(pss) then
+      notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
+    else
+      notifyPlayer(ply, "TYPE:"..typ..":"..tostring(dat[2] or ""))
+    end
+  else
+    if(cmd == "@clear") then
+      pss = true; oQ:Clear()
+    elseif(cmd == "@arrange") then
+      pss = true; oQ:Arrange()
+    elseif(cmd == "@relocate") then
+      pss = true; oQ:Relocate()
+    elseif(cmd == "@count") then
+      pss = true; oQ:Count()
+    elseif(cmd == "#string") then
+      pss = true; print(tostring(oQ))
+    end
+    if(pss) then
+      notifyPlayer(ply, cmd.."|"..tostring(dat[2] or ""))
+    else
+      notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
+    end
+  end
+end
+
 if(CLIENT) then
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
       cam.Start2D()
-        oQ:Draw()
+        if(mtQueue.__draw) then
+          oQ:Draw()
+        end
       cam.End2D()
     end)
   hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
   hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
     function(ply, txt, tem, xxx)
       if(not ply:IsAdmin()) then return end
+      queueConfigNPC(ply, txt)
       net.Start("hook_npc_queue_msg")
         net.WriteEntity(ply)
         net.WriteString(txt)
@@ -370,58 +431,12 @@ if(CLIENT) then
 else
   -- Allocate user message
   util.AddNetworkString("hook_npc_queue_msg")
-  -- Server notification function
-  local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
-  local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
-  local function notifyPlayer(ply, txt)
-    ply:SendLua(fmtNot:format("["..ply:Nick().."]: <"..tostring(txt)..">"))
-    ply:SendLua(fmtPly:format(math.random(1, 4)))
-  end
   -- Message reciever function
-  local function recieveQueueConfigNPC()
-    local ply, txt = net.ReadEntity(), net.ReadString()
-    if(not IsValid(ply)) then return end
-    if(not ply:IsAdmin()) then return end
-    local cut, pss = ":", false
-    local txt = txt:gsub("%s+", cut)
-    local dat = cut:Explode(txt)
-    local cmd = tostring(dat[1] or "")
-    local key = "__"..cmd
-    local mva = mtQueue[key]
-    if(mva ~= nil) then
-      local typ = type(mva)
-      if(typ == "string") then pss = true
-        mtQueue[key] = tostring(dat[2] or "")
-      elseif(typ == "number") then pss = true
-        mtQueue[key] = (tonumber(dat[2]) or 0)
-      elseif(typ == "boolean") then pss = true
-        mtQueue[key] = tobool(dat[2])
-      end
-      if(pss) then
-        notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
-      else
-        notifyPlayer(ply, "TYPE:"..typ..":"..tostring(dat[2] or ""))
-      end
-    else
-      if(cmd == "@clear") then
-        pss = true; oQ:Clear()
-      elseif(cmd == "@arrange") then
-        pss = true; oQ:Arrange()
-      elseif(cmd == "@relocate") then
-        pss = true; oQ:Relocate()
-      elseif(cmd == "@count") then
-        pss = true; oQ:Count()
-      elseif(cmd == "#string") then
-        pss = true; print(tostring(oQ))
-      end
-      if(pss) then
-        notifyPlayer(ply, cmd.."|"..tostring(dat[2] or ""))
-      else
-        notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
-      end
-    end
-  end
-  net.Receive("hook_npc_queue_msg", recieveQueueConfigNPC)
+  net.Receive("hook_npc_queue_msg",
+    function()
+      local ply, txt = net.ReadEntity(), net.ReadString()
+      queueConfigNPC(ply, txt)
+    end)
 
   -- Do the locic with timers
   hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
