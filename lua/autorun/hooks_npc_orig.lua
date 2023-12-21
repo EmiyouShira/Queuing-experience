@@ -33,8 +33,14 @@ local mtQueue = {}
       mtQueue.__dstr = 1 -- in seconds
       -- Amount of units to scan for NPC
       mtQueue.__tnpc = 100
+      -- Remove radius for NPC
+      mtQueue.__rrnp = 50
+      -- Color for debgging remove radius
+      mtQueue.__conp = Color(200,150,50,100)
       -- Turn on/ off the draw method
       mtQueue.__draw = true
+      -- Turn on/ off the remove debug
+      mtQueue.__drrm = false
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
       -- Function filter for NPC trace
@@ -94,7 +100,7 @@ local function NewQueue(pos)
     for idx = 1, miSiz do
       local cv = mtData[idx]
       if(IsValid(cv.Ent)) then siz = siz + 1 end
-    end; return siz, mtData.Size
+    end; return miSiz, siz, mtData.Size
   end
   -- Check when slot used
   function self:GetIndex(idx)
@@ -160,16 +166,18 @@ local function NewQueue(pos)
     if(pos and npc:GetPos():DistToSqr(pos) > 10) then return true end
     return false -- NPC has finished moving
   end
-  -- Check when slot used
-  function self:GetTrace(idx)
-    local idx = self:GetIndex(idx)
-    if(not idx) then return nil end
+  function self:InTrace(pos)
     local mar = Vector(0,0,mtQueue.__tnpc)
-    local pos = mtData[idx].Pos
     local dat = mtQueue.__trft
           dat.start:Set(pos); dat.start:Add(mar)
           dat.endpos:Set(pos); dat.endpos:Sub(mar)
     return util.TraceLine(mtQueue.__trft)
+  end
+  -- Check when slot used
+  function self:GetTrace(idx)
+    local idx = self:GetIndex(idx)
+    if(not idx) then return nil end
+    return self:InTrace(mtData[idx].Pos)
   end
   -- Read the last empty index
   function self:GetRecent()
@@ -203,6 +211,32 @@ local function NewQueue(pos)
     local ent = mtData[idx].Ent
     if(IsValid(ent)) then return false end
     return true
+  end
+  -- Initialize when hot reloading
+  function self:Init()
+    if(CLIENT) then return self end
+    local rad = mtQueue.__rrnp
+    for idx = 1, miSiz do
+      local tr = self:GetTrace(idx)
+      local ent = ents.FindInSphere(self:GetNode(idx), rad)
+      if(tr and tr.Hit) then
+        mtData[idx].Ent = tr.Entity
+      end
+      for cnt = 1, #ent do
+        if(ent[cnt] ~= tr.Entity) then
+          SafeRemoveEntity(ent[cnt])
+        end
+      end
+    end
+    local out = mtQueue.__out
+    for idx = 1, #out do
+      if(idx > 1) then
+        local ent = ents.FindAlongRay(out[idx-1], out[idx])
+        for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+      end
+      local ent = ents.FindInSphere(out[idx], rad)
+      for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+    end; return self
   end
   -- Jump the queue when some nodes are empty
   function self:Jump(idx)
@@ -349,7 +383,7 @@ local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
       oQ:Extend(Vector(-1,0,0), 60, 1)
       oQ:Extend(Vector(0,-1,0), 60, 2)
       oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2)
+      oQ:Extend(Vector(0,1,0), 60, 2):Init()
 
 if(not oQ) then error("Failed allocating desk object!") end
 
@@ -391,6 +425,8 @@ local function queueConfigNPC(ply, txt)
   else
     if(cmd == "@clear") then
       pss = true; oQ:Clear()
+    elseif(cmd == "@init") then
+      pss = true; oQ:Init()
     elseif(cmd == "@arrange") then
       pss = true; oQ:Arrange()
     elseif(cmd == "@relocate") then
@@ -412,11 +448,26 @@ if(CLIENT) then
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
-      cam.Start2D()
-        if(mtQueue.__draw) then
+      if(mtQueue.__draw) then
+        cam.Start2D()
           oQ:Draw()
+        cam.End2D()
+        if(mtQueue.__drrm) then
+          cam.Start3D()
+            local out = mtQueue.__out
+            local cor = mtQueue.__conp
+            local rad = mtQueue.__rrnp
+            render.SetColorMaterial()
+            local siz = oQ:GetSize()
+            for idx = 1, siz do
+              render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cor)
+            end
+            for idx = 1, #out do
+              render.DrawSphere(out[idx], rad, 16, 16, cor)
+            end
+          cam.End3D()
         end
-      cam.End2D()
+      end
     end)
   hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
   hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
