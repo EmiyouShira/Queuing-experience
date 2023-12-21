@@ -19,7 +19,7 @@ local mtQueue = {}
       -- Contains the NPC pulled from sequential
       mtQueue.__nps = nil
       -- Enable to act as a hive mind
-      mtQueue.__hive = false
+      mtQueue.__hvmd = false
       -- NPC Move type
       mtQueue.__move = SCHED_FORCED_GO_RUN
       -- NPC Exit Interval
@@ -93,7 +93,6 @@ local function NewQueue(pos)
       if(IsValid(cv.Ent)) then siz = siz + 1 end
     end; return siz, mtData.Size
   end
-
   -- Check when slot used
   function self:GetIndex(idx)
     local idx = (tonumber(idx) or 0)
@@ -192,27 +191,46 @@ local function NewQueue(pos)
     local npc = mtData[1].Ent
     mtData[1].Ent = nil; return npc
   end
+  -- Check whenever the node is empty
+  function self:IsEmpty(idx)
+    local idx = self:GetIndex(idx)
+    if(not idx) then return nil end
+    local tr = self:GetTrace(idx)
+    if(tr and tr.Hit) then return false end
+    local ent = mtData[idx].Ent
+    if(IsValid(ent)) then return false end
+    return true
+  end
+  -- Jump the queue when some nodes are empty
+  function self:Jump(idx)
+    if(idx == 1) then return self end
+    local cv = mtData[idx]
+    if(not IsValid(cv.Ent)) then return self end
+    local prv = self:GetIndex(idx - 1)
+    if(not prv) then return self end
+    local ent = self:GetEntity(prv)
+    if(IsValid(ent)) then return self end
+    while(prv and not IsValid(ent)) do
+      prv = self:GetIndex(prv - 1)
+      if(not prv) then prv = 0; break end
+      ent = self:GetEntity(prv)
+    end; prv = (prv + 1)
+    local pv = mtData[prv]
+    if(self:IsEmpty(prv) and not self:IsMove(cv.Ent)) then
+      pv.Ent = cv.Ent -- Move NPC to current pointer
+      cv.Ent = nil    -- Remove the NPC from the slot
+    end; return self
+  end
   -- Rearange NPC in the queue
   function self:Arrange()
-    local siz = 0
     for crr = 1, miSiz do
       local cv = mtData[crr]
       if(IsValid(cv.Ent)) then
-        siz = siz + 1 -- Regster populated node
-        if(not mtQueue.__hive) then
-          local pi = self:GetIndex(crr - 1)
-          if(pi) then
-            local pv = mtData[pi]
-            local tr = self:GetTrace(pi)
-            local mv = self:IsMove(cv.Ent)
-            if((tr and not tr.Hit) and not mv and not pv.Ent) then
-              pv.Ent = cv.Ent -- Move NPC to current pointer
-              cv.Ent = nil    -- Remove the NPC from the slot
-            end
-          end
+        if(not mtQueue.__hvmd) then
+          self:Jump(crr)
         end
       else -- Fill it from the next set
-        if(mtQueue.__hive) then
+        if(mtQueue.__hvmd) then
           local idx = 0 -- Assume valid NPC is not found
           for src = (crr + 1), miSiz do
             local sv = mtData[src]
@@ -226,8 +244,9 @@ local function NewQueue(pos)
             local iv = mtData[idx]
             cv.Ent = iv.Ent -- Move NPC to current pointer
             iv.Ent = nil    -- Remove the NPC from the slot
-            siz = siz + 1   -- Increment NPC count
           end
+        else
+          self:Jump(crr)
         end
       end
     end -- Assign the new NPC count
@@ -237,7 +256,7 @@ local function NewQueue(pos)
     for idx = 1, miSiz do
       local v = mtData[idx]
       if(IsValid(v.Ent)) then
-        if(mtQueue.__hive) then
+        if(mtQueue.__hvmd) then
           self:Move(v.Ent, v.Pos)
         else
           local tr = self:GetTrace(idx)
