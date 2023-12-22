@@ -79,6 +79,14 @@ local function NewQueue(pos)
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
     end; miSiz = miSiz + iSiz; return self
   end
+  -- Update count of valid slots
+  function self:Count()
+    local siz = 0
+    for idx = 1, miSiz do local cv = mtData[idx]
+      if(IsValid(cv.Ent)) then siz = siz + 1 end
+    end; mtData.Size = siz
+    return self
+  end
   -- Calculate colors
   function self:GetColor(idx)
     local co = mtQueue.__colr
@@ -118,28 +126,15 @@ local function NewQueue(pos)
   function self:Clear()
     for idx = 1, miSiz do
       local cv = mtData[idx]
-      local tr = self:GetTrace(idx)
-      SafeRemoveEntity(cv.Ent)
-      SafeRemoveEntity(tr.Ent)
-      cv.Ent = nil
-    end; mtData.Size = 0
-    return self
-  end
-  -- Update count of valid slots
-  function self:Count()
-    local siz = 0
-    for idx = 1, miSiz do local cv = mtData[idx]
-      if(IsValid(cv.Ent)) then siz = siz + 1 end
-    end; mtData.Size = siz
-    return self
+      local tr = self:GetTrace(idx, true)
+      if(tr) then SafeRemoveEntity(tr.Entity) end
+      SafeRemoveEntity(cv.Ent); cv.Ent = nil
+    end; return self:Count()
   end
   -- Read queue size
   function self:GetSize()
-    local siz = 0
-    for idx = 1, miSiz do
-      local cv = mtData[idx]
-      if(IsValid(cv.Ent)) then siz = siz + 1 end
-    end; return miSiz, siz, mtData.Size
+    self:Count()
+    return miSiz, mtData.Size
   end
   -- Check when slot used
   function self:GetIndex(idx)
@@ -213,7 +208,7 @@ local function NewQueue(pos)
     return util.TraceLine(mtQueue.__trft)
   end
   -- Check when slot used
-  function self:GetTrace(idx)
+  function self:GetTrace(idx, pr)
     local idx = self:GetIndex(idx)
     if(not idx) then return nil end
     return self:InTrace(mtData[idx].Pos)
@@ -619,4 +614,10 @@ else
           end)
       end
     end)
+end
+
+if(SERVER) then
+  print("Hook queuing experience has been loaded on SERVER!")
+else
+  print("Hook queuing experience has been loaded on CLIENT!")
 end
