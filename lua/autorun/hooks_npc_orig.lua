@@ -213,7 +213,7 @@ local function NewQueue(pos)
     return true
   end
   -- Initialize when hot reloading
-  function self:Init()
+  function self:Refresh()
     if(CLIENT) then return self end
     local rad = mtQueue.__rrnp
     local out = mtQueue.__out
@@ -396,7 +396,7 @@ local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
       oQ:Extend(Vector(-1,0,0), 60, 1)
       oQ:Extend(Vector(0,-1,0), 60, 2)
       oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2):Init()
+      oQ:Extend(Vector(0,1,0), 60, 2):Refresh()
 
 if(not oQ) then error("Failed allocating desk object!") end
 
@@ -406,7 +406,7 @@ local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
 local function notifyPlayer(ply, txt)
   local idx = math.random(1, 4)
   local msg = "["..ply:Nick().."]: <"..tostring(txt)..">"
-  if(SERVER) then
+  if(SERVER) then -- Notify user when message reaches the server
     ply:SendLua(fmtNot:format(msg))
     ply:SendLua(fmtPly:format(idx))
   end
@@ -438,8 +438,8 @@ local function queueConfigNPC(ply, txt)
   else
     if(cmd == "@clear") then
       pss = true; oQ:Clear()
-    elseif(cmd == "@init") then
-      pss = true; oQ:Init()
+    elseif(cmd == "@refresh") then
+      pss = true; oQ:Refresh()
     elseif(cmd == "@arrange") then
       pss = true; oQ:Arrange()
     elseif(cmd == "@relocate") then
