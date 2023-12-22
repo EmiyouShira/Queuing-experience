@@ -35,12 +35,14 @@ local mtQueue = {}
       mtQueue.__tnpc = 100
       -- Remove radius for NPC
       mtQueue.__rrnp = 50
+      -- Remove radius margin
+      mtQueue.__rrmr = 0.85
       -- Color for debgging remove radius
       mtQueue.__conp = Color(200,150,50,100)
       -- Turn on/ off the draw method
       mtQueue.__draw = true
       -- Turn on/ off the remove debug
-      mtQueue.__drrm = false
+      mtQueue.__drrm = true
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
       -- Function filter for NPC trace
@@ -74,6 +76,41 @@ local function NewQueue(pos)
       mtData[miSiz + idx] = {Pos = Vector(), Ent = nil}
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
     end; miSiz = miSiz + iSiz; return self
+  end
+  -- Calculate colors
+  function self:GetColor(idx)
+    local co = mtQueue.__colr
+    local idx = self:GetIndex(idx)
+    if(not idx) then return co end
+    local hit = self:GetTrace(idx).Hit
+    co.r = (hit and 0 or 255)
+    co.g = (hit and 255 or 0)
+    return co
+  end
+  -- Apply perspective radius
+  function self:GetRadius(org, mar)
+    local pos = LocalPlayer():GetPos()
+    return (mar * 200) / org:Distance(pos)
+  end
+  -- Returns the border lcation for nodes
+  function self:GetPathMargin(vS, vE)
+    if(not vS) then return 0 end
+    if(not vE) then return 0 end
+    local rad = mtQueue.__rrnp
+    local rmr = mtQueue.__rrmr
+    local rmr = mtQueue.__rrmr
+    local vup = Vector(0,0,rad/2)
+    local vvs = Vector(vS); vvs:Add(vup)
+    local vve = Vector(vE); vve:Add(vup)
+    local dir = (vve - vvs)
+    if(dir:IsZero()) then return 0 end
+    local len = dir:Length()
+    local mar = (rad * rmr)
+    local mur = len - 2 * mar
+    if(mur <= 0) then return mur end
+    dir:Normalize(); dir:Mul(mar)
+    vve:Sub(dir); vvs:Add(dir)
+    return mur, vvs, vve, dir
   end
   -- Clear queue state
   function self:Clear()
@@ -217,6 +254,7 @@ local function NewQueue(pos)
     if(CLIENT) then return self end
     local rad = mtQueue.__rrnp
     local out = mtQueue.__out
+    local rmr = mtQueue.__rrmr
     local vup = Vector(0,0,rad/2)
     for idx = 1, miSiz do
       local tr = self:GetTrace(idx)
@@ -224,15 +262,9 @@ local function NewQueue(pos)
         mtData[idx].Ent = tr.Entity
       end
       if(idx > 1) then
-        local crr = self:GetNode(idx); crr:Add(vup)
-        local prv = self:GetNode(idx - 1); prv:Add(vup)
-        local dir = (crr - prv)
-        local len = dir:Length()
-        local mar = (rad * 0.85)
-        local mur = len - 2 * mar
+        local mur, prv, crr = self:GetPathMargin(self:GetNode(idx-1),
+                                                 self:GetNode(idx))
         if(mur > 0) then
-          dir:Normalize(); dir:Mul(mar)
-          crr:Sub(dir); prv:Add(dir)
           local ent = ents.FindAlongRay(prv, crr)
           for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
         end
@@ -244,8 +276,11 @@ local function NewQueue(pos)
     end
     for idx = 1, #out do
       if(idx > 1) then
-        local ent = ents.FindAlongRay(out[idx-1] + vup, out[idx] + vup)
-        for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+        local mur, prv, crr = self:GetPathMargin(out[idx-1], out[idx])
+        if(mur > 0) then
+          local ent = ents.FindAlongRay(prv, crr)
+          for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+        end
       end
       local ent = ents.FindInSphere(out[idx], rad)
       for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
@@ -317,21 +352,6 @@ local function NewQueue(pos)
         end
       end
     end; return self
-  end
-  -- Apply perspective radius
-  function self:GetRadius(org, mar)
-    local pos = LocalPlayer():GetPos()
-    return (mar * 200) / org:Distance(pos)
-  end
-  -- Calculate colors
-  function self:GetColor(idx)
-    local co = mtQueue.__colr
-    local idx = self:GetIndex(idx)
-    if(not idx) then return co end
-    local hit = self:GetTrace(idx).Hit
-    co.r = (hit and 0 or 255)
-    co.g = (hit and 255 or 0)
-    return co
   end
   --Draw debig information
   function self:Draw()
@@ -473,9 +493,17 @@ if(CLIENT) then
             render.SetColorMaterial()
             local siz = oQ:GetSize()
             for idx = 1, siz do
+              local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
+              if(mur > 0) then
+                render.DrawLine(prv, crr, cor)
+              end
               render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cor)
             end
             for idx = 1, #out do
+              local mur, prv, crr = oQ:GetPathMargin(out[idx-1], out[idx])
+              if(mur > 0) then
+                render.DrawLine(prv, crr, cor)
+              end
               render.DrawSphere(out[idx], rad, 16, 16, cor)
             end
           cam.End3D()
@@ -555,7 +583,9 @@ else
   timer.Remove("hook_npc_queue_ched")
   timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
     function()
-      if(not IsValid(mtQueue.__npx)) then return end
+      if(not IsValid(mtQueue.__npx)) then
+        mtQueue.__out.ID = 0; return
+      end
       local out = mtQueue.__out
       if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
       out.ID = out.ID + 1
