@@ -3,7 +3,8 @@ local mtQueue = {}
       -- Metatable method indexing
       mtQueue.__index = mtQueue
       -- Where to go after pulling
-      mtQueue.__out = { ID = 0, -- Track the exit node
+      mtQueue.__out = {
+        ID = 0, -- Track the exit node
         Vector(3124.45,1278.14,16.2813),
         Vector(2787.98,1332.3,16.2813),
         Vector(2768.52,1426.19,16.2813),
@@ -32,8 +33,20 @@ local mtQueue = {}
       mtQueue.__dstr = 1 -- in seconds
       -- Amount of units to scan for NPC
       mtQueue.__tnpc = 100
+      -- Remove radius for NPC
+      mtQueue.__rrnp = 50
+      -- Remove radius margin
+      mtQueue.__rrmr = 0.85
+      -- Color for debgging remove radius
+      mtQueue.__conp = Color(0,255,255,255)
+      -- Turn on/off the draw method
+      mtQueue.__draw = true
+      -- Turn on/off the remove debug
+      mtQueue.__drrm = false
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
+      -- Color transperent alpha
+      mtQueue.__cota = 25
       -- Function filter for NPC trace
       mtQueue.__trft = {
         start  = Vector(), -- Start position
@@ -66,17 +79,6 @@ local function NewQueue(pos)
       mtData[miSiz + idx].Pos:Set(vPos + muo * vDir)
     end; miSiz = miSiz + iSiz; return self
   end
-  -- Clear queue state
-  function self:Clear()
-    for idx = 1, miSiz do
-      local cv = mtData[idx]
-      local tr = self:GetTrace(idx)
-      SafeRemoveEntity(cv.Ent)
-      SafeRemoveEntity(tr.Ent)
-      cv.Ent = nil
-    end; mtData.Size = 0
-    return self
-  end
   -- Update count of valid slots
   function self:Count()
     local siz = 0
@@ -85,13 +87,54 @@ local function NewQueue(pos)
     end; mtData.Size = siz
     return self
   end
-  -- Read queue size
-  function self:GetSize()
-    local siz = 0
+  -- Calculate colors
+  function self:GetColor(idx)
+    local co = mtQueue.__colr
+    local idx = self:GetIndex(idx)
+    if(not idx) then return co end
+    local hit = self:GetTrace(idx).Hit
+    co.r = (hit and 0 or 255)
+    co.g = (hit and 255 or 0)
+    return co
+  end
+  -- Apply perspective radius
+  function self:GetRadius(org, mar)
+    local pos = LocalPlayer():GetPos()
+    return (mar * 200) / org:Distance(pos)
+  end
+  -- Returns the border lcation for nodes
+  function self:GetPathMargin(vS, vE)
+    if(not vS) then return 0 end
+    if(not vE) then return 0 end
+    local rad = mtQueue.__rrnp
+    local rmr = mtQueue.__rrmr
+    local rmr = mtQueue.__rrmr
+    local vup = Vector(0,0,rad/2)
+    local vvs = Vector(vS); vvs:Add(vup)
+    local vve = Vector(vE); vve:Add(vup)
+    local dir = (vve - vvs)
+    if(dir:IsZero()) then return 0 end
+    local len = dir:Length()
+    local mar = (rad * rmr)
+    local mur = len - 2 * mar
+    if(mur <= 0) then return mur end
+    dir:Normalize(); dir:Mul(mar)
+    vve:Sub(dir); vvs:Add(dir)
+    return mur, vvs, vve, dir
+  end
+  -- Clear queue state
+  function self:Clear()
     for idx = 1, miSiz do
       local cv = mtData[idx]
-      if(IsValid(cv.Ent)) then siz = siz + 1 end
-    end; return siz, mtData.Size
+      local tr = self:GetTrace(idx, true)
+      if(tr) then SafeRemoveEntity(tr.Entity) end
+      SafeRemoveEntity(cv.Ent); cv.Ent = nil
+    end; return self:Count()
+  end
+  -- Read queue size
+  function self:GetSize()
+    self:Count()
+    return miSiz, mtData.Size
   end
   -- Check when slot used
   function self:GetIndex(idx)
@@ -157,16 +200,18 @@ local function NewQueue(pos)
     if(pos and npc:GetPos():DistToSqr(pos) > 10) then return true end
     return false -- NPC has finished moving
   end
-  -- Check when slot used
-  function self:GetTrace(idx)
-    local idx = self:GetIndex(idx)
-    if(not idx) then return nil end
+  function self:InTrace(pos)
     local mar = Vector(0,0,mtQueue.__tnpc)
-    local pos = mtData[idx].Pos
     local dat = mtQueue.__trft
           dat.start:Set(pos); dat.start:Add(mar)
           dat.endpos:Set(pos); dat.endpos:Sub(mar)
     return util.TraceLine(mtQueue.__trft)
+  end
+  -- Check when slot used
+  function self:GetTrace(idx, pr)
+    local idx = self:GetIndex(idx)
+    if(not idx) then return nil end
+    return self:InTrace(mtData[idx].Pos)
   end
   -- Read the last empty index
   function self:GetRecent()
@@ -200,6 +245,41 @@ local function NewQueue(pos)
     local ent = mtData[idx].Ent
     if(IsValid(ent)) then return false end
     return true
+  end
+  -- Initialize when hot reloading
+  function self:Refresh()
+    if(CLIENT) then return self end
+    local rad = mtQueue.__rrnp
+    local out = mtQueue.__out
+    local rmr = mtQueue.__rrmr
+    local vup = Vector(0,0,rad/2)
+    for idx = 1, miSiz do
+      local tr = self:GetTrace(idx)
+      if(tr and tr.Hit) then
+        mtData[idx].Ent = tr.Entity
+      end
+      if(idx > 1) then
+        local mur, prv, crr = self:GetPathMargin(self:GetNode(idx-1),
+                                                 self:GetNode(idx))
+        if(mur > 0) then
+          local ent = ents.FindAlongRay(prv, crr)
+          for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+        end
+      end
+      local ent = ents.FindInSphere(self:GetNode(idx), rad)
+      for cnt = 1, #ent do
+        if(ent[cnt] ~= tr.Entity) then SafeRemoveEntity(ent[cnt]) end
+      end
+    end
+    for idx = 1, #out do
+      local mur, prv, crr = self:GetPathMargin(out[idx-1] or self:GetNode(1), out[idx])
+      if(mur > 0) then
+        local ent = ents.FindAlongRay(prv, crr)
+        for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+      end
+      local ent = ents.FindInSphere(out[idx], rad)
+      for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
+    end; return self
   end
   -- Jump the queue when some nodes are empty
   function self:Jump(idx)
@@ -268,21 +348,6 @@ local function NewQueue(pos)
       end
     end; return self
   end
-  -- Apply perspective radius
-  function self:GetRadius(org, mar)
-    local pos = LocalPlayer():GetPos()
-    return (mar * 200) / org:Distance(pos)
-  end
-  -- Calculate colors
-  function self:GetColor(idx)
-    local co = mtQueue.__colr
-    local idx = self:GetIndex(idx)
-    if(not idx) then return co end
-    local hit = self:GetTrace(idx).Hit
-    co.r = (hit and 0 or 255)
-    co.g = (hit and 255 or 0)
-    return co
-  end
   --Draw debig information
   function self:Draw()
     local str = mtData[1].Pos
@@ -331,97 +396,153 @@ end
 ]]
 
 local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(2, Vector(3397.98,1317.09,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(3, Vector(3403.37,1374.76,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(4, Vector(3397.85,1433.04,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(5, Vector(3374.88,1486.17,16.2812))
-      oQ:Extend(Vector(-1,0,0), 60, 6)
-      oQ:Extend(Vector(0,-1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,-1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2)
-
 if(not oQ) then error("Failed allocating desk object!") end
 
+if SERVER then
+  -- Allocate user message to use for chat control
+  util.AddNetworkString("hook_npc_queue_msg")
+end
+
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(2, Vector(3397.98,1317.09,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(3, Vector(3403.37,1374.76,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(4, Vector(3397.85,1433.04,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(5, Vector(3374.88,1486.17,16.2812))
+oQ:Extend(Vector(-1,0,0), 60, 6)
+oQ:Extend(Vector(0,-1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,-1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,1,0), 60, 2)
+oQ:Refresh()
+oQ:Clear()
+
+-- Server notification function
+local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
+local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
+local function notifyPlayer(ply, txt)
+  local idx = math.random(1, 4)
+  local msg = "["..ply:Nick().."]: <"..tostring(txt)..">"
+  if(SERVER) then -- Notify user when message reaches the server
+    ply:SendLua(fmtNot:format(msg))
+    ply:SendLua(fmtPly:format(idx))
+  end
+end
+
+local function queueConfigNPC(ply, txt)
+  if(not IsValid(ply)) then return end
+  if(not ply:IsAdmin()) then return end
+  local cut, pss = ":", false
+  local txt = txt:gsub("%s+", cut)
+  local dat = cut:Explode(txt)
+  local cmd = tostring(dat[1] or "")
+  local key = "__"..cmd
+  local mva = mtQueue[key]
+  if(mva ~= nil) then
+    local typ = type(mva)
+    if(typ == "string") then pss = true
+      mtQueue[key] = tostring(dat[2] or "")
+    elseif(typ == "number") then pss = true
+      mtQueue[key] = (tonumber(dat[2]) or 0)
+    elseif(typ == "boolean") then pss = true
+      mtQueue[key] = tobool(dat[2])
+    end
+    if(pss) then
+      notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
+    else
+      notifyPlayer(ply, "TYPE:"..typ..":"..tostring(dat[2] or ""))
+    end
+  else
+    if(cmd == "@clear") then
+      pss = true; oQ:Clear()
+    elseif(cmd == "@refresh") then
+      pss = true; oQ:Refresh()
+    elseif(cmd == "@arrange") then
+      pss = true; oQ:Arrange()
+    elseif(cmd == "@relocate") then
+      pss = true; oQ:Relocate()
+    elseif(cmd == "@count") then
+      pss = true; oQ:Count()
+    elseif(cmd == "#string") then
+      pss = true; print(tostring(oQ))
+    end
+    if(pss) then
+      notifyPlayer(ply, cmd.."|"..tostring(dat[2] or ""))
+    else
+      notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
+    end
+  end
+end
+
 if(CLIENT) then
+  -- Client side drawing
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
-      cam.Start2D()
-        oQ:Draw()
-      cam.End2D()
+      if(mtQueue.__draw) then
+        cam.Start2D()
+          oQ:Draw()
+        cam.End2D()
+        if(mtQueue.__drrm) then
+          cam.Start3D()
+            local out = mtQueue.__out
+            local cor = mtQueue.__conp
+            local rad = mtQueue.__rrnp
+            render.SetColorMaterial()
+            local siz = oQ:GetSize()
+            for idx = 1, siz do
+              local cot = oQ:GetColor(idx)
+              if(idx > 1) then
+                local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
+                if(mur > 0) then
+                  local coa = cot.a; cot.a = 255
+                  render.DrawLine(prv, crr, cot)
+                  cot.a = coa
+                end
+              end
+              local coa = cot.a; cot.a = mtQueue.__cota
+              render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cot)
+              cot.a = coa
+            end
+            for idx = 1, #out do
+              local mur, prv, crr = oQ:GetPathMargin(out[idx-1] or oQ:GetNode(1), out[idx])
+              if(mur > 0) then
+                local coa = cor.a; cor.a = 255
+                render.DrawLine(prv, crr, cor)
+                cor.a = coa
+              end
+              local coa = cor.a; cor.a = mtQueue.__cota
+              render.DrawSphere(out[idx], rad, 16, 16, cor)
+              cor.a = coa
+            end
+          cam.End3D()
+        end
+      end
     end)
+
+  -- Chat control
   hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
   hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
     function(ply, txt, tem, xxx)
       if(not ply:IsAdmin()) then return end
+      queueConfigNPC(ply, txt)
       net.Start("hook_npc_queue_msg")
         net.WriteEntity(ply)
         net.WriteString(txt)
       net.SendToServer()
     end)
 else
-  -- Allocate user message
-  util.AddNetworkString("hook_npc_queue_msg")
-  -- Server notification function
-  local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
-  local fmtPly = "surface.PlaySound(\"ambient/water/drip%d.wav\")"
-  local function notifyPlayer(ply, txt)
-    ply:SendLua(fmtNot:format("["..ply:Nick().."]: <"..tostring(txt)..">"))
-    ply:SendLua(fmtPly:format(math.random(1, 4)))
-  end
   -- Message reciever function
-  local function recieveQueueConfigNPC()
-    local ply, txt = net.ReadEntity(), net.ReadString()
-    if(not IsValid(ply)) then return end
-    if(not ply:IsAdmin()) then return end
-    local cut, pss = ":", false
-    local txt = txt:gsub("%s+", cut)
-    local dat = cut:Explode(txt)
-    local cmd = tostring(dat[1] or "")
-    local key = "__"..cmd
-    local mva = mtQueue[key]
-    if(mva ~= nil) then
-      local typ = type(mva)
-      if(typ == "string") then pss = true
-        mtQueue[key] = tostring(dat[2] or "")
-      elseif(typ == "number") then pss = true
-        mtQueue[key] = (tonumber(dat[2]) or 0)
-      elseif(typ == "boolean") then pss = true
-        mtQueue[key] = tobool(dat[2])
-      end
-      if(pss) then
-        notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
-      else
-        notifyPlayer(ply, "TYPE:"..typ..":"..tostring(dat[2] or ""))
-      end
-    else
-      if(cmd == "@clear") then
-        pss = true; oQ:Clear()
-      elseif(cmd == "@arrange") then
-        pss = true; oQ:Arrange()
-      elseif(cmd == "@relocate") then
-        pss = true; oQ:Relocate()
-      elseif(cmd == "@count") then
-        pss = true; oQ:Count()
-      elseif(cmd == "#string") then
-        pss = true; print(tostring(oQ))
-      end
-      if(pss) then
-        notifyPlayer(ply, cmd.."|"..tostring(dat[2] or ""))
-      else
-        notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
-      end
-    end
-  end
-  net.Receive("hook_npc_queue_msg", recieveQueueConfigNPC)
+  net.Receive("hook_npc_queue_msg",
+    function()
+      local ply, txt = net.ReadEntity(), net.ReadString()
+      queueConfigNPC(ply, txt)
+    end)
 
   -- Do the locic with timers
   hook.Remove("PlayerSpawnedNPC", "hook_npc_queue")
@@ -476,7 +597,9 @@ else
   timer.Remove("hook_npc_queue_ched")
   timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
     function()
-      if(not IsValid(mtQueue.__npx)) then return end
+      if(not IsValid(mtQueue.__npx)) then
+        mtQueue.__out.ID = 0; return
+      end
       local out = mtQueue.__out
       if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
       out.ID = out.ID + 1
@@ -491,4 +614,10 @@ else
           end)
       end
     end)
+end
+
+if(SERVER) then
+  print("Hook queuing experience has been loaded on SERVER!")
+else
+  print("Hook queuing experience has been loaded on CLIENT!")
 end
