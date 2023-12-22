@@ -1,8 +1,3 @@
-if SERVER then
-  -- Allocate user message to use for chat control
-  util.AddNetworkString("hook_npc_queue_msg")
-end
-
       -- Metatable of the desc class. Global data
 local mtQueue = {}
       -- Metatable method indexing
@@ -406,24 +401,31 @@ end
 ]]
 
 local oQ = NewQueue(Vector(3362.8,1268.72,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(2, Vector(3397.98,1317.09,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(3, Vector(3403.37,1374.76,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(4, Vector(3397.85,1433.04,16.2813))
-      oQ:Extend(Vector(1,0,0), 60, 1)
-      oQ:SetNode(5, Vector(3374.88,1486.17,16.2812))
-      oQ:Extend(Vector(-1,0,0), 60, 6)
-      oQ:Extend(Vector(0,-1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,-1,0), 60, 2)
-      oQ:Extend(Vector(-1,0,0), 60, 1)
-      oQ:Extend(Vector(0,1,0), 60, 2):Refresh()
-
 if(not oQ) then error("Failed allocating desk object!") end
+
+if SERVER then
+  -- Allocate user message to use for chat control
+  util.AddNetworkString("hook_npc_queue_msg")
+end
+
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(2, Vector(3397.98,1317.09,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(3, Vector(3403.37,1374.76,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(4, Vector(3397.85,1433.04,16.2813))
+oQ:Extend(Vector(1,0,0), 60, 1)
+oQ:SetNode(5, Vector(3374.88,1486.17,16.2812))
+oQ:Extend(Vector(-1,0,0), 60, 6)
+oQ:Extend(Vector(0,-1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,-1,0), 60, 2)
+oQ:Extend(Vector(-1,0,0), 60, 1)
+oQ:Extend(Vector(0,1,0), 60, 2)
+oQ:Refresh()
+oQ:Clear()
 
 -- Server notification function
 local fmtNot = "notification.AddLegacy(\"%s\", NOTIFY_UNDO, 6)"
