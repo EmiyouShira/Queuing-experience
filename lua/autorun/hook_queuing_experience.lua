@@ -507,7 +507,8 @@ local function queueConfigNPC(ply, txt)
   local txt = txt:gsub("%s+", cut)
   local dat = cut:Explode(txt)
   local cmd = tostring(dat[1] or "")
-  local key = "__"..cmd
+  if(cmd:sub(1,1) ~= "@") then return end
+  local key = "__"..cmd:sub(2,-1)
   local mva = mtQueue[key]
   if(mva ~= nil) then
     local typ = type(mva)
