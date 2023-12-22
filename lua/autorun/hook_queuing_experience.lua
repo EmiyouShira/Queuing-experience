@@ -34,7 +34,7 @@ local mtQueue = {}
       -- Amount of units to scan for NPC
       mtQueue.__tnpc = 100
       -- Remove radius for NPC
-      mtQueue.__rrnp = 50
+      mtQueue.__rrnp = 40
       -- Remove radius margin
       mtQueue.__rrmr = 0.85
       -- Color for debgging remove radius
@@ -124,11 +124,13 @@ local function NewQueue(pos)
   end
   -- Clear queue state
   function self:Clear()
-    for idx = 1, miSiz do
-      local cv = mtData[idx]
-      local tr = self:GetTrace(idx, true)
-      if(tr) then SafeRemoveEntity(tr.Entity) end
-      SafeRemoveEntity(cv.Ent); cv.Ent = nil
+    if(SERVER) then
+      for idx = 1, miSiz do
+        local cv = mtData[idx]
+        local tr = self:GetTrace(idx, true)
+        if(tr) then SafeRemoveEntity(tr.Entity) end
+        SafeRemoveEntity(cv.Ent); cv.Ent = nil
+      end
     end; return self:Count()
   end
   -- Read queue size
@@ -434,6 +436,70 @@ local function notifyPlayer(ply, txt)
   end
 end
 
+local function queueConfigTimers()
+  -- Timer function to check availability and handle NPC arrivals
+  -- It will constantly try to pit NPCs at the queue desk
+  timer.Remove("hook_npc_queue_push")
+  timer.Create("hook_npc_queue_push", mtQueue.__push, 0,
+    function()
+      local npc = mtQueue.__nps
+      if(IsValid(npc)) then
+        if(oQ:Push(npc)) then
+          oQ:Arrange():Relocate()
+          mtQueue.__nps = nil
+        end
+      else
+        npc = table.remove(mtQueue.__npc, 1)
+        if(IsValid(npc)) then
+          if(oQ:Push(npc)) then
+            oQ:Arrange():Relocate()
+            mtQueue.__nps = nil
+          end
+        else
+          mtQueue.__nps = nil
+        end
+      end
+      oQ:Arrange():Relocate()
+    end)
+  -- Timer function to check when NPC leaves
+  timer.Remove("hook_npc_queue_pull")
+  timer.Create("hook_npc_queue_pull", mtQueue.__pull, 0,
+    function()
+      if(IsValid(mtQueue.__npx)) then return end
+      local ent = oQ:GetEntity(1)
+      if(IsValid(ent) and oQ:IsMove(ent)) then return end
+      mtQueue.__npx = oQ:Pull()
+      if(IsValid(mtQueue.__npx)) then
+        local out = mtQueue.__out
+        out.ID = out.ID + 1
+        oQ:Move(mtQueue.__npx, out[out.ID])
+        mtQueue.__npc[tostring(mtQueue.__npx:EntIndex())] = nil
+        oQ:Arrange():Relocate()
+      end
+    end)
+  -- Controls when NPC follws out trajectory
+  timer.Remove("hook_npc_queue_ched")
+  timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
+    function()
+      if(not IsValid(mtQueue.__npx)) then
+        mtQueue.__out.ID = 0; return
+      end
+      local out = mtQueue.__out
+      if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
+      out.ID = out.ID + 1
+      if(out[out.ID]) then
+        oQ:Move(mtQueue.__npx, out[out.ID])
+      else
+        timer.Simple(mtQueue.__dstr,
+          function()
+            SafeRemoveEntity(mtQueue.__npx)
+            mtQueue.__npx = nil
+            mtQueue.__out.ID = 0
+          end)
+      end
+    end)
+end
+
 local function queueConfigNPC(ply, txt)
   if(not IsValid(ply)) then return end
   if(not ply:IsAdmin()) then return end
@@ -477,6 +543,7 @@ local function queueConfigNPC(ply, txt)
       notifyPlayer(ply, "CMD:"..cmd..":"..tostring(dat[2] or ""))
     end
   end
+  if(SERVER) then queueConfigTimers() end
 end
 
 if(CLIENT) then
@@ -551,69 +618,8 @@ else
       if(not IsValid(npc)) then return end
       table.insert(mtQueue.__npc, npc)
     end)
-
-  -- Timer function to check availability and handle NPC arrivals
-  -- It will constantly try to pit NPCs at the queue desk
-  timer.Remove("hook_npc_queue_push")
-  timer.Create("hook_npc_queue_push", mtQueue.__push, 0,
-    function()
-      local npc = mtQueue.__nps
-      if(IsValid(npc)) then
-        if(oQ:Push(npc)) then
-          oQ:Arrange():Relocate()
-          mtQueue.__nps = nil
-        end
-      else
-        npc = table.remove(mtQueue.__npc, 1)
-        if(IsValid(npc)) then
-          if(oQ:Push(npc)) then
-            oQ:Arrange():Relocate()
-            mtQueue.__nps = nil
-          end
-        else
-          mtQueue.__nps = nil
-        end
-      end
-      oQ:Arrange():Relocate()
-    end)
-
-  -- Timer function to check when NPC leaves
-  timer.Remove("hook_npc_queue_pull")
-  timer.Create("hook_npc_queue_pull", mtQueue.__pull, 0,
-    function()
-      if(IsValid(mtQueue.__npx)) then return end
-      local ent = oQ:GetEntity(1)
-      if(IsValid(ent) and oQ:IsMove(ent)) then return end
-      mtQueue.__npx = oQ:Pull()
-      if(IsValid(mtQueue.__npx)) then
-        local out = mtQueue.__out
-        out.ID = out.ID + 1
-        oQ:Move(mtQueue.__npx, out[out.ID])
-        mtQueue.__npc[tostring(mtQueue.__npx:EntIndex())] = nil
-        oQ:Arrange():Relocate()
-      end
-    end)
-
-  timer.Remove("hook_npc_queue_ched")
-  timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
-    function()
-      if(not IsValid(mtQueue.__npx)) then
-        mtQueue.__out.ID = 0; return
-      end
-      local out = mtQueue.__out
-      if(oQ:IsMove(mtQueue.__npx, out[out.ID])) then return end
-      out.ID = out.ID + 1
-      if(out[out.ID]) then
-        oQ:Move(mtQueue.__npx, out[out.ID])
-      else
-        timer.Simple(mtQueue.__dstr,
-          function()
-            SafeRemoveEntity(mtQueue.__npx)
-            mtQueue.__npx = nil
-            mtQueue.__out.ID = 0
-          end)
-      end
-    end)
+  -- Setup timers and routines on the server
+  queueConfigTimers()
 end
 
 if(SERVER) then
