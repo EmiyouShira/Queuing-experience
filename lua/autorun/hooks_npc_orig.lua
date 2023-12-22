@@ -44,10 +44,10 @@ local mtQueue = {}
       mtQueue.__rrmr = 0.85
       -- Color for debgging remove radius
       mtQueue.__conp = Color(0,255,255,255)
-      -- Turn on/ off the draw method
+      -- Turn on/off the draw method
       mtQueue.__draw = true
-      -- Turn on/ off the remove debug
-      mtQueue.__drrm = true
+      -- Turn on/off the remove debug
+      mtQueue.__drrm = false
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
       -- Color transperent alpha
