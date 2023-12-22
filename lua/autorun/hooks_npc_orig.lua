@@ -1,3 +1,8 @@
+if SERVER then
+  -- Allocate user message to use for chat control
+  util.AddNetworkString("hook_npc_queue_msg")
+end
+
       -- Metatable of the desc class. Global data
 local mtQueue = {}
       -- Metatable method indexing
@@ -38,13 +43,15 @@ local mtQueue = {}
       -- Remove radius margin
       mtQueue.__rrmr = 0.85
       -- Color for debgging remove radius
-      mtQueue.__conp = Color(200,150,50,100)
+      mtQueue.__conp = Color(0,255,255,255)
       -- Turn on/ off the draw method
       mtQueue.__draw = true
       -- Turn on/ off the remove debug
       mtQueue.__drrm = true
       -- Color to pass for drawing
       mtQueue.__colr = Color(0,0,0,255)
+      -- Color transperent alpha
+      mtQueue.__cota = 25
       -- Function filter for NPC trace
       mtQueue.__trft = {
         start  = Vector(), -- Start position
@@ -275,12 +282,10 @@ local function NewQueue(pos)
       end
     end
     for idx = 1, #out do
-      if(idx > 1) then
-        local mur, prv, crr = self:GetPathMargin(out[idx-1], out[idx])
-        if(mur > 0) then
-          local ent = ents.FindAlongRay(prv, crr)
-          for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
-        end
+      local mur, prv, crr = self:GetPathMargin(out[idx-1] or self:GetNode(1), out[idx])
+      if(mur > 0) then
+        local ent = ents.FindAlongRay(prv, crr)
+        for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
       end
       local ent = ents.FindInSphere(out[idx], rad)
       for cnt = 1, #ent do SafeRemoveEntity(ent[cnt]) end
@@ -478,6 +483,7 @@ local function queueConfigNPC(ply, txt)
 end
 
 if(CLIENT) then
+  -- Client side drawing
   hook.Remove("PreDrawHUD", "hook_npc_queue_cl")
   hook.Add("PreDrawHUD", "hook_npc_queue_cl",
     function()
@@ -493,23 +499,36 @@ if(CLIENT) then
             render.SetColorMaterial()
             local siz = oQ:GetSize()
             for idx = 1, siz do
-              local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
-              if(mur > 0) then
-                render.DrawLine(prv, crr, cor)
+              local cot = oQ:GetColor(idx)
+              if(idx > 1) then
+                local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
+                if(mur > 0) then
+                  local coa = cot.a; cot.a = 255
+                  render.DrawLine(prv, crr, cot)
+                  cot.a = coa
+                end
               end
-              render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cor)
+              local coa = cot.a; cot.a = mtQueue.__cota
+              render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cot)
+              cot.a = coa
             end
             for idx = 1, #out do
-              local mur, prv, crr = oQ:GetPathMargin(out[idx-1], out[idx])
+              local mur, prv, crr = oQ:GetPathMargin(out[idx-1] or oQ:GetNode(1), out[idx])
               if(mur > 0) then
+                local coa = cor.a; cor.a = 255
                 render.DrawLine(prv, crr, cor)
+                cor.a = coa
               end
+              local coa = cor.a; cor.a = mtQueue.__cota
               render.DrawSphere(out[idx], rad, 16, 16, cor)
+              cor.a = coa
             end
           cam.End3D()
         end
       end
     end)
+
+  -- Chat control
   hook.Remove("OnPlayerChat", "hook_npc_queue_cmd")
   hook.Add("OnPlayerChat", "hook_npc_queue_cmd",
     function(ply, txt, tem, xxx)
@@ -521,8 +540,6 @@ if(CLIENT) then
       net.SendToServer()
     end)
 else
-  -- Allocate user message
-  util.AddNetworkString("hook_npc_queue_msg")
   -- Message reciever function
   net.Receive("hook_npc_queue_msg",
     function()
