@@ -512,12 +512,12 @@ local function queueConfigNPC(ply, txt)
   local mva = mtQueue[key]
   if(mva ~= nil) then
     local typ = type(mva)
-    if(typ == "string") then pss = true
-      mtQueue[key] = tostring(dat[2] or "")
-    elseif(typ == "number") then pss = true
-      mtQueue[key] = (tonumber(dat[2]) or 0)
-    elseif(typ == "boolean") then pss = true
-      mtQueue[key] = tobool(dat[2])
+    if(typ == "string") then
+      pss = true; mtQueue[key] = tostring(dat[2] or "")
+    elseif(typ == "number") then
+      pss = true; mtQueue[key] = (tonumber(dat[2]) or 0)
+    elseif(typ == "boolean") then
+      pss = true; mtQueue[key] = tobool(dat[2])
     end
     if(pss) then
       notifyPlayer(ply, typ.."|"..cmd.."|"..tostring(dat[2] or ""))
@@ -535,7 +535,7 @@ local function queueConfigNPC(ply, txt)
       pss = true; oQ:Relocate()
     elseif(cmd == "@count") then
       pss = true; oQ:Count()
-    elseif(cmd == "#string") then
+    elseif(cmd == "@string") then
       pss = true; print(tostring(oQ))
     end
     if(pss) then
