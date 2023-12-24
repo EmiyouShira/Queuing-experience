@@ -19,6 +19,12 @@ local mtQueue = {}
       mtQueue.__npx = nil
       -- Contains the NPC pulled from sequential
       mtQueue.__nps = nil
+      -- Cash register NPC
+      mtQueue.__npr = nil
+      -- Cash register NPC position
+      mtQueue.__crps = Vector(3361.84,1204.29,16.2813)
+      -- Color for cash register
+      mtQueue.__cocr = Color(255,0,255,255)
       -- Enable to act as a hive mind
       mtQueue.__hvmd = false
       -- NPC Move type
@@ -125,9 +131,12 @@ local function NewQueue(pos)
   -- Clear queue state
   function self:Clear()
     if(SERVER) then
+      SafeRemoveEntity(mtQueue.__npr)
+      local tr = self:InTrace(mtQueue.__crps)
+      if(tr) then SafeRemoveEntity(tr.Entity) end
       for idx = 1, miSiz do
         local cv = mtData[idx]
-        local tr = self:GetTrace(idx, true)
+        local tr = self:GetTrace(idx)
         if(tr) then SafeRemoveEntity(tr.Entity) end
         SafeRemoveEntity(cv.Ent); cv.Ent = nil
       end
@@ -210,7 +219,7 @@ local function NewQueue(pos)
     return util.TraceLine(mtQueue.__trft)
   end
   -- Check when slot used
-  function self:GetTrace(idx, pr)
+  function self:GetTrace(idx)
     local idx = self:GetIndex(idx)
     if(not idx) then return nil end
     return self:InTrace(mtData[idx].Pos)
@@ -255,6 +264,14 @@ local function NewQueue(pos)
     local out = mtQueue.__out
     local rmr = mtQueue.__rrmr
     local vup = Vector(0,0,rad/2)
+    local cps = mtQueue.__crps
+    local ent = ents.FindInSphere(cps, rad)
+    local ctr = self:InTrace(cps)
+    for cnt = 1, #ent do
+      if(ctr and ctr.Entity != ent[cnt]) then
+        SafeRemoveEntity(ent[cnt])
+      end
+    end
     for idx = 1, miSiz do
       local tr = self:GetTrace(idx)
       if(tr and tr.Hit) then
@@ -351,10 +368,16 @@ local function NewQueue(pos)
     end; return self
   end
   --Draw debig information
-  function self:Draw()
+  function self:Draw2D()
+    local cps = mtQueue.__crps
+    local cpc = mtQueue.__cocr
     local str = mtData[1].Pos
     local cor = self:GetColor(1)
     local xy = str:ToScreen()
+    local cr = cps:ToScreen()
+    surface.SetDrawColor(cpc)
+    surface.DrawLine(cr.x, cr.y, xy.x, xy.y)
+    surface.DrawCircle(cr.x, cr.y, self:GetRadius(cps, 10), cpc)
     surface.SetDrawColor(cor)
     surface.DrawCircle(xy.x, xy.y, self:GetRadius(str, 10), cor)
     for cnt = 2, miSiz do
@@ -388,6 +411,44 @@ local function NewQueue(pos)
       end
     end
     return self
+  end
+  -- Render debig information in 3D space
+  function self:Draw3D()
+    local out = mtQueue.__out
+    local cor = mtQueue.__conp
+    local rad = mtQueue.__rrnp
+    local cps = mtQueue.__crps
+    local cpc = mtQueue.__cocr
+    render.SetColorMaterial()
+    local coa = cpc.a; cpc.a = mtQueue.__cota
+    render.DrawSphere(cps, rad, 16, 16, cpc)
+    cpc.a = coa
+    local siz = oQ:GetSize()
+    for idx = 1, siz do
+      local cot = oQ:GetColor(idx)
+      if(idx > 1) then
+        local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
+        if(mur > 0) then
+          local coa = cot.a; cot.a = 255
+          render.DrawLine(prv, crr, cot)
+          cot.a = coa
+        end
+      end
+      local coa = cot.a; cot.a = mtQueue.__cota
+      render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cot)
+      cot.a = coa
+    end
+    for idx = 1, #out do
+      local mur, prv, crr = oQ:GetPathMargin(out[idx-1] or oQ:GetNode(1), out[idx])
+      if(mur > 0) then
+        local coa = cor.a; cor.a = 255
+        render.DrawLine(prv, crr, cor)
+        cor.a = coa
+      end
+      local coa = cor.a; cor.a = mtQueue.__cota
+      render.DrawSphere(out[idx], rad, 16, 16, cor)
+      cor.a = coa
+    end; return self
   end
   return self
 end
@@ -442,29 +503,53 @@ local function queueConfigTimers()
   timer.Remove("hook_npc_queue_push")
   timer.Create("hook_npc_queue_push", mtQueue.__push, 0,
     function()
-      local npc = mtQueue.__nps
-      if(IsValid(npc)) then
-        if(oQ:Push(npc)) then
-          oQ:Arrange():Relocate()
-          mtQueue.__nps = nil
-        end
-      else
-        npc = table.remove(mtQueue.__npc, 1)
-        if(IsValid(npc)) then
-          if(oQ:Push(npc)) then
-            oQ:Arrange():Relocate()
-            mtQueue.__nps = nil
+      local crp = mtQueue.__crps
+      local cre = mtQueue.__npr
+      if(IsValid(cre)) then
+        local tre = oQ:InTrace(crp)
+        if(tre and tre.Hit and not oQ:IsMove(cre)) then
+          local npc = mtQueue.__nps
+          if(IsValid(npc)) then
+            if(oQ:Push(npc)) then
+              oQ:Arrange():Relocate()
+              mtQueue.__nps = nil
+            end
+          else
+            local npc = table.remove(mtQueue.__npc, 1)
+            if(IsValid(npc)) then
+              if(oQ:Push(npc)) then
+                oQ:Arrange():Relocate()
+                mtQueue.__nps = nil
+              end
+            else
+              mtQueue.__nps = nil
+            end
           end
         else
-          mtQueue.__nps = nil
+          oQ:Move(cre, crp)
+        end
+      else
+        local npc = table.remove(mtQueue.__npc, 1)
+        if(IsValid(npc)) then
+          mtQueue.__npr = npc
+          oQ:Move(npc, crp)
+        else
+          mtQueue.__npr = nil
         end
       end
       oQ:Arrange():Relocate()
     end)
+
   -- Timer function to check when NPC leaves
   timer.Remove("hook_npc_queue_pull")
   timer.Create("hook_npc_queue_pull", mtQueue.__pull, 0,
     function()
+      local cre = mtQueue.__npr
+      if(not IsValid(cre)) then return end
+      local crp = mtQueue.__crps
+      if(oQ:IsMove(cre)) then return end
+      local tre = oQ:InTrace(crp)
+      if(not (tre and tre.Hit)) then return end
       if(IsValid(mtQueue.__npx)) then return end
       local ent = oQ:GetEntity(1)
       if(IsValid(ent) and oQ:IsMove(ent)) then return end
@@ -473,10 +558,10 @@ local function queueConfigTimers()
         local out = mtQueue.__out
         out.ID = out.ID + 1
         oQ:Move(mtQueue.__npx, out[out.ID])
-        mtQueue.__npc[tostring(mtQueue.__npx:EntIndex())] = nil
         oQ:Arrange():Relocate()
       end
     end)
+
   -- Controls when NPC follws out trajectory
   timer.Remove("hook_npc_queue_ched")
   timer.Create("hook_npc_queue_ched", mtQueue.__shed, 0,
@@ -554,40 +639,11 @@ if(CLIENT) then
     function()
       if(mtQueue.__draw) then
         cam.Start2D()
-          oQ:Draw()
+          oQ:Draw2D()
         cam.End2D()
         if(mtQueue.__drrm) then
           cam.Start3D()
-            local out = mtQueue.__out
-            local cor = mtQueue.__conp
-            local rad = mtQueue.__rrnp
-            render.SetColorMaterial()
-            local siz = oQ:GetSize()
-            for idx = 1, siz do
-              local cot = oQ:GetColor(idx)
-              if(idx > 1) then
-                local mur, prv, crr = oQ:GetPathMargin(oQ:GetNode(idx-1), oQ:GetNode(idx))
-                if(mur > 0) then
-                  local coa = cot.a; cot.a = 255
-                  render.DrawLine(prv, crr, cot)
-                  cot.a = coa
-                end
-              end
-              local coa = cot.a; cot.a = mtQueue.__cota
-              render.DrawSphere(oQ:GetNode(idx), rad, 16, 16, cot)
-              cot.a = coa
-            end
-            for idx = 1, #out do
-              local mur, prv, crr = oQ:GetPathMargin(out[idx-1] or oQ:GetNode(1), out[idx])
-              if(mur > 0) then
-                local coa = cor.a; cor.a = 255
-                render.DrawLine(prv, crr, cor)
-                cor.a = coa
-              end
-              local coa = cor.a; cor.a = mtQueue.__cota
-              render.DrawSphere(out[idx], rad, 16, 16, cor)
-              cor.a = coa
-            end
+            oQ:Draw3D()
           cam.End3D()
         end
       end
